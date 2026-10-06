@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Inventory.Agent/Inventory.Agent.csproj" />
+    <Project Path="src/Inventory.Api/Inventory.Api.csproj" />
+    <Project Path="src/Inventory.Application/Inventory.Application.csproj" />
+    <Project Path="src/Inventory.Contracts/Inventory.Contracts.csproj" />
+    <Project Path="src/Inventory.Domain/Inventory.Domain.csproj" />
+    <Project Path="src/Inventory.Infrastructure/Inventory.Infrastructure.csproj" />
+    <Project Path="src/Inventory.Infrastructure.PostgresMigrations/Inventory.Infrastructure.PostgresMigrations.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Inventory.Agent.Tests/Inventory.Agent.Tests.csproj" />
+    <Project Path="tests/Inventory.Api.IntegrationTests/Inventory.Api.IntegrationTests.csproj" />
+    <Project Path="tests/Inventory.Application.Tests/Inventory.Application.Tests.csproj" />
+    <Project Path="tests/Inventory.Architecture.Tests/Inventory.Architecture.Tests.csproj" />
+    <Project Path="tests/Inventory.Domain.Tests/Inventory.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

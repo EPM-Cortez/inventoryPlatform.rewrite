@@ -1,0 +1,569 @@
+@import 'tailwindcss';
+
+/*
+ * Theme is driven by `data-theme` on <html>, set by an inline script in index.html
+ * before first paint. `prefers-color-scheme` only decides the *initial* value; the
+ * attribute is always the source of truth so the in-app toggle can win.
+ */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* ---------------------------------------------------------------------------
+ * Semantic palette
+ *
+ * Components never reference a raw colour. They reference a role: canvas, surface,
+ * border, text, accent, or a status. Both themes define every role, so adding a
+ * component cannot accidentally break dark mode.
+ * ------------------------------------------------------------------------ */
+:root {
+  color-scheme: light;
+
+  --canvas: #f6f7f9;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f0f2f5;
+  --surface-hover: #f6f7f9;
+
+  --border: #e4e7ec;
+  --border-strong: #cdd3dd;
+
+  --text: #0d1117;
+  --text-muted: #586071;
+  --text-subtle: #838d9e;
+
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-active: #3730a3;
+  --accent-fg: #ffffff;
+  --accent-soft: #eef1fe;
+  --accent-soft-fg: #3730a3;
+  --accent-ring: #a5b0f8;
+
+  --success: #067647;
+  --success-soft: #ecfdf3;
+  --success-border: #a9e5c4;
+
+  --warning: #b54708;
+  --warning-soft: #fff9ec;
+  --warning-border: #fbdf95;
+
+  --danger: #b42318;
+  --danger-hover: #912018;
+  --danger-soft: #fef3f2;
+  --danger-border: #fbcdc9;
+
+  --info: #175cd3;
+  --info-soft: #eff8ff;
+  --info-border: #b3ddff;
+
+  --neutral: #4a5364;
+  --neutral-soft: #f1f3f6;
+  --neutral-border: #e0e4ea;
+
+  /* Sidebar keeps its own scale so it can stay dark in light mode if wanted. */
+  --nav-bg: #ffffff;
+  --nav-border: #e4e7ec;
+  --nav-text: #3f4756;
+  --nav-text-active: #1f2430;
+  --nav-hover: #f2f4f7;
+  --nav-active: #eef1fe;
+
+  /* Alternate table rows: a step off the surface, so long rows stay trackable. */
+  --row-stripe: #f9fafb;
+
+  /* Device illustrations (`DeviceIllustration`): metal shells, dark glass. */
+  --device-shell: #e8ebf0;
+  --device-shell-shade: #d3d8e0;
+  --device-shell-light: #f5f6f9;
+  --device-edge: #8f98a8;
+  --device-screen: #1c2232;
+  --device-detail: #aeb6c4;
+  --device-paper: #ffffff;
+  --device-shadow: rgb(13 17 23 / 0.1);
+  --device-backdrop: #edf0f5;
+
+  --shadow-sm: 0 1px 2px 0 rgb(13 17 23 / 0.05);
+  --shadow-md: 0 2px 4px -1px rgb(13 17 23 / 0.06), 0 4px 12px -2px rgb(13 17 23 / 0.08);
+  --shadow-lg: 0 8px 24px -4px rgb(13 17 23 / 0.12), 0 2px 6px -2px rgb(13 17 23 / 0.06);
+  --shadow-overlay: 0 16px 48px -12px rgb(13 17 23 / 0.24);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --canvas: #0a0c11;
+  --surface: #11141b;
+  --surface-raised: #171b23;
+  --surface-sunken: #0d1016;
+  --surface-hover: #191d26;
+
+  --border: #232833;
+  --border-strong: #343b49;
+
+  --text: #e9ecf1;
+  --text-muted: #98a1b2;
+  --text-subtle: #6b7488;
+
+  --accent: #6366f1;
+  --accent-hover: #7376f4;
+  --accent-active: #818cf8;
+  --accent-fg: #ffffff;
+  --accent-soft: #1b1e3a;
+  --accent-soft-fg: #b0b8fb;
+  --accent-ring: #4f46e5;
+
+  --success: #6fdda3;
+  --success-soft: #062b1d;
+  --success-border: #0b5638;
+
+  --warning: #f5c34b;
+  --warning-soft: #2f1e04;
+  --warning-border: #7c3009;
+
+  --danger: #f7938c;
+  --danger-hover: #fbb1ab;
+  --danger-soft: #33110f;
+  --danger-border: #7d1d16;
+
+  --info: #7cc4ff;
+  --info-soft: #0a2036;
+  --info-border: #17457f;
+
+  --neutral: #b4bcca;
+  --neutral-soft: #191d26;
+  --neutral-border: #2a3038;
+
+  --nav-bg: #0d1016;
+  --nav-border: #1e232d;
+  --nav-text: #97a0b1;
+  --nav-text-active: #f0f2f6;
+  --nav-hover: #171b23;
+  --nav-active: #1b1e3a;
+
+  --row-stripe: #141821;
+
+  --device-shell: #2c323e;
+  --device-shell-shade: #1f242d;
+  --device-shell-light: #3a4250;
+  --device-edge: #535d70;
+  --device-screen: #080b12;
+  --device-detail: #4b5466;
+  --device-paper: #d9dee6;
+  --device-shadow: rgb(0 0 0 / 0.45);
+  --device-backdrop: #151922;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 2px 4px -1px rgb(0 0 0 / 0.5), 0 4px 12px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 8px 24px -4px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.4);
+  --shadow-overlay: 0 16px 48px -12px rgb(0 0 0 / 0.7);
+}
+
+/* `inline` makes utilities emit `var(--surface)` rather than an extra indirection,
+ * so a theme swap is a single custom-property change with no recalculation cost. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-hover: var(--surface-hover);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-fg: var(--accent-soft-fg);
+  --color-accent-ring: var(--accent-ring);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-border: var(--success-border);
+
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-border: var(--warning-border);
+
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
+
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-info-border: var(--info-border);
+
+  --color-neutral: var(--neutral);
+  --color-neutral-soft: var(--neutral-soft);
+  --color-neutral-border: var(--neutral-border);
+
+  --color-nav-bg: var(--nav-bg);
+  --color-nav-border: var(--nav-border);
+  --color-nav-text: var(--nav-text);
+  --color-nav-text-active: var(--nav-text-active);
+  --color-nav-hover: var(--nav-hover);
+  --color-nav-active: var(--nav-active);
+
+  --color-row-stripe: var(--row-stripe);
+
+  --color-device-shell: var(--device-shell);
+  --color-device-shell-shade: var(--device-shell-shade);
+  --color-device-shell-light: var(--device-shell-light);
+  --color-device-edge: var(--device-edge);
+  --color-device-screen: var(--device-screen);
+  --color-device-detail: var(--device-detail);
+  --color-device-paper: var(--device-paper);
+  --color-device-shadow: var(--device-shadow);
+  --color-device-backdrop: var(--device-backdrop);
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-overlay: var(--shadow-overlay);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', 'SF Mono', Menlo, Consolas,
+    monospace;
+
+  /* Data-dense UI needs a tighter type ramp than Tailwind's default. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.125rem;
+  --text-xl--line-height: 1.625rem;
+  --text-2xl: 1.375rem;
+  --text-2xl--line-height: 1.875rem;
+  --text-3xl: 1.75rem;
+  --text-3xl--line-height: 2.125rem;
+
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* Motion.
+   *
+   * Named by intent rather than by number, so a component asks for "the speed a
+   * thing appears at" instead of picking a figure. Everything is short: the
+   * point of the motion is to say *where* something came from, and a transition
+   * long enough to be admired is one the user is waiting on.
+   *
+   * `--ease-exit` is deliberately faster and flatter than `--ease-enter`.
+   * Something arriving deserves a moment to settle; something leaving should get
+   * out of the way. */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  /* Overshoots slightly — only for things that should feel physical, like a
+   * pressed control springing back. Never for anything carrying text. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-instant: 80ms;
+  --duration-fast: 130ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* One focus treatment everywhere. Components should not redefine it. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  ::selection {
+    background-color: var(--accent-soft);
+    color: var(--accent-soft-fg);
+  }
+
+  /* Numbers in tables must align vertically to be scannable. */
+  table,
+  [data-tabular] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--border-strong);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-subtle);
+  }
+
+  /* Motion is opt-out for everything decorative. The exception is marked with
+   * `data-motion="essential"`: a spinner that has stopped spinning reads as a
+   * hung application, which is a worse outcome than the movement itself. The
+   * reduced-motion preference is about vestibular safety — a small rotating
+   * glyph is not the hazard; sliding panels and parallax are. */
+  @media (prefers-reduced-motion: reduce) {
+    *:not([data-motion='essential']),
+    *:not([data-motion='essential'])::before,
+    *:not([data-motion='essential'])::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Truncation that still lets the browser pick a sensible break. */
+  .truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  /* The settle applied to page content on a route change. */
+  .animate-view {
+    animation: view-in var(--duration-base) var(--ease-enter);
+  }
+
+  /* Children rise in sequence. Capped deliberately low: past about six items the
+   * last one is waiting on choreography rather than data, which reads as slow.
+   * Only for a short, stable set — never for table rows that refetch. */
+  .stagger-children > * {
+    animation: view-in var(--duration-base) var(--ease-enter) backwards;
+  }
+  .stagger-children > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  .stagger-children > *:nth-child(2) {
+    animation-delay: 40ms;
+  }
+  .stagger-children > *:nth-child(3) {
+    animation-delay: 80ms;
+  }
+  .stagger-children > *:nth-child(4) {
+    animation-delay: 120ms;
+  }
+  .stagger-children > *:nth-child(5) {
+    animation-delay: 160ms;
+  }
+  .stagger-children > *:nth-child(n + 6) {
+    animation-delay: 200ms;
+  }
+
+  /* A brief tint on a value that changed underneath the user. */
+  .flash-on-change {
+    animation: flash-accent 1.2s var(--ease-exit);
+  }
+
+  /* Lifts on hover. Transform only, so it never reflows the row beneath it. */
+  .lift {
+    transition:
+      transform var(--duration-fast) var(--ease-out-quart),
+      box-shadow var(--duration-fast) var(--ease-out-quart),
+      border-color var(--duration-fast) var(--ease-out-quart);
+  }
+  .lift:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+}
+
+/* Every overlay has a matching exit. Radix keeps an element mounted while a CSS
+ * animation is running on it, so a `data-[state=closed]` animation is all that
+ * is needed — without one, panels vanish on the same frame they are dismissed,
+ * which is the single thing that most makes an interface feel unfinished. */
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dialog-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(2px) scale(0.99);
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes drawer-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Popovers grow from the edge they are anchored to, so the origin reads as the
+ * control that opened them. Radix sets `--radix-*-content-transform-origin`. */
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes popover-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+
+/* The whole-page settle on a route change. Small on purpose — a big movement
+ * between pages costs orientation rather than adding polish. */
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* For a value that has just changed under the user, e.g. a count updated by a
+ * background refetch. Attention without movement, so it never shifts layout. */
+@keyframes flash-accent {
+  0% {
+    background-color: transparent;
+  }
+  15% {
+    background-color: var(--accent-soft);
+  }
+  100% {
+    background-color: transparent;
+  }
+}

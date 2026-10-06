@@ -1,0 +1,21 @@
+# Optional overlay for signed agent-installer downloads from the Linux API.
+# Use with: docker compose -f compose.postgres.yml -f compose.agent-installer.yml up -d
+# The trusted certificate must be provisioned outside the artifact directory.
+services:
+  api:
+    environment:
+      AgentInstaller__InstallerPath: /opt/inventory/agent-artifact/msi/Inventory.Agent.Installer.msi
+      AgentInstaller__ManifestPath: /opt/inventory/agent-artifact/agent-artifacts.json
+      AgentInstaller__ManifestSignaturePath: /opt/inventory/agent-artifact/agent-artifacts.json.sig
+      AgentInstaller__TrustedSigningCertificatePath: /run/secrets/agent_release_certificate.pem
+      AgentInstaller__ApprovedVersion: ${INVENTORY_AGENT_APPROVED_VERSION:?Set the reviewed MSI version}
+      AgentInstaller__ApprovedSha256: ${INVENTORY_AGENT_APPROVED_SHA256:?Set the reviewed MSI SHA-256}
+    secrets:
+      - source: agent_release_certificate
+        target: agent_release_certificate.pem
+    volumes:
+      - ${INVENTORY_AGENT_ARTIFACT_DIR:?Set the absolute signed artifact directory}:/opt/inventory/agent-artifact:ro
+
+secrets:
+  agent_release_certificate:
+    file: ${INVENTORY_AGENT_TRUSTED_CERT_FILE:?Set the independently provisioned release certificate PEM}

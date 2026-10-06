@@ -1,0 +1,204 @@
+name: inventory
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    shm_size: 128mb
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+    secrets:
+      - postgres_admin_password
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inventory"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - data
+
+  postgres-init:
+    image: postgres:18-alpine
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - /opt/inventory/create-database-roles.sh
+    secrets:
+      - postgres_admin_password
+      - postgres_owner_password
+      - postgres_app_password
+    volumes:
+      - ./docker/postgres/create-database-roles.sh:/opt/inventory/create-database-roles.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+    init: true
+
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes:
+      - clamav_data:/var/lib/clamav
+    networks:
+      - data
+      - signature_updates
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["--migrate"]
+    restart: "no"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Migration
+      Database__Provider: Postgres
+      Database__PasswordFile: /run/secrets/postgres_owner_password
+      ConnectionStrings__InventoryDatabase: >-
+        Host=postgres;Port=5432;Database=inventory;Username=inventory_owner;
+        SSL Mode=Disable;Include Error Detail=false
+      AttachmentScanning__Provider: ClamAv
+      AttachmentScanning__Host: clamav
+      AttachmentScanning__Port: 3310
+    secrets:
+      - postgres_owner_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+    networks:
+      - data
+    init: true
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_HTTP_PORTS: 8080
+      AllowedHosts: ${INVENTORY_HOST:?Set INVENTORY_HOST in .env}
+      Cors__AllowedOrigins__0: ${INVENTORY_FRONTEND_ORIGIN:?Set INVENTORY_FRONTEND_ORIGIN in .env}
+      School__QrBaseUrl: ${INVENTORY_QR_BASE_URL:?Set INVENTORY_QR_BASE_URL in .env}
+      Database__Provider: Postgres
+      Database__PasswordFile: /run/secrets/postgres_app_password
+      ConnectionStrings__InventoryDatabase: >-
+        Host=postgres;Port=5432;Database=inventory;Username=inventory_app;
+        SSL Mode=Disable;Include Error Detail=false
+      Security__DataProtectionKeysPath: /var/lib/inventory/keys
+      Security__ProtectKeysWithDpapi: "false"
+      Security__DataProtectionCertificatePath: /run/secrets/data_protection_certificate
+      Security__DataProtectionCertificatePasswordFile: /run/secrets/data_protection_certificate_password
+      Storage__BackupPath: /var/lib/inventory/backups
+      AttachmentScanning__Provider: ClamAv
+      AttachmentScanning__Host: clamav
+      AttachmentScanning__Port: 3310
+      ForwardedHeaders__Enabled: "true"
+      ForwardedHeaders__ForwardLimit: 1
+      ForwardedHeaders__KnownNetworks__0: 172.30.0.0/24
+    secrets:
+      - postgres_app_password
+      - data_protection_certificate
+      - data_protection_certificate_password
+    volumes:
+      - data_protection_keys:/var/lib/inventory/keys
+      - backups:/var/lib/inventory/backups
+    ports:
+      - "127.0.0.1:${INVENTORY_HTTP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - app
+      - data
+    init: true
+
+  postgres-backup:
+    image: postgres:18-alpine
+    profiles: ["operations"]
+    restart: "no"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        export PGPASSWORD="$$(tr -d '\r\n' < /run/secrets/postgres_owner_password)"
+        stamp="$$(date -u +%Y%m%dT%H%M%SZ)"
+        staging="/backups/.backup-postgres-$${stamp}.partial"
+        completed="/backups/backup-postgres-$${stamp}"
+        mkdir -p "$${staging}"
+        pg_dump \
+          --host=postgres \
+          --username=inventory_owner \
+          --dbname=inventory \
+          --format=custom \
+          --compress=9 \
+          --file="$${staging}/inventory.dump"
+        bytes="$$(stat -c %s "$${staging}/inventory.dump")"
+        sha256="$$(sha256sum "$${staging}/inventory.dump" | cut -d ' ' -f 1)"
+        printf '{"formatVersion":1,"provider":"Postgres","completedAtUtc":"%s","files":[{"relativePath":"inventory.dump","length":%s,"sha256":"%s"}]}\n' \
+          "$$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          "$${bytes}" \
+          "$${sha256}" \
+          > "$${staging}/manifest.json"
+        mv "$${staging}" "$${completed}"
+        echo "$${completed}"
+    secrets:
+      - postgres_owner_password
+    volumes:
+      - backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+    networks:
+      - data
+
+secrets:
+  postgres_admin_password:
+    file: ${POSTGRES_ADMIN_PASSWORD_FILE:-./secrets/postgres-admin-password.txt}
+  postgres_owner_password:
+    file: ${POSTGRES_OWNER_PASSWORD_FILE:-./secrets/postgres-owner-password.txt}
+  postgres_app_password:
+    file: ${POSTGRES_APP_PASSWORD_FILE:-./secrets/postgres-app-password.txt}
+  data_protection_certificate:
+    file: ${DATA_PROTECTION_CERTIFICATE_FILE:-./secrets/data-protection.pfx}
+  data_protection_certificate_password:
+    file: ${DATA_PROTECTION_CERTIFICATE_PASSWORD_FILE:-./secrets/data-protection-password.txt}
+
+volumes:
+  postgres_data:
+  clamav_data:
+  data_protection_keys:
+  backups:
+
+networks:
+  app:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  data:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+  signature_updates:
+    # Only ClamAV joins this outbound-capable network; port 3310 is never published.

@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+.git/
+.github/
+.vs/
+.idea/
+artifacts/
+data/
+secrets/
+tests/
+tmp/
+*.db
+*.db-shm
+*.db-wal
+*.user
+TestResults/

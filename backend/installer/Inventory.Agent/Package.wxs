@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix
+  xmlns="http://wixtoolset.org/schemas/v4/wxs"
+  xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package
+    Name="Inventory Endpoint Agent"
+    Manufacturer="Inventory Platform"
+    Version="$(var.InstallerVersion)"
+    UpgradeCode="6BC806BF-5D9D-4FE6-AC18-6649574BA208"
+    Scope="perMachine"
+    Language="1033">
+
+    <SummaryInformation
+      Description="Secure Windows endpoint inventory service"
+      Manufacturer="Inventory Platform" />
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer Inventory Endpoint Agent is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Property Id="API_BASE_URL" Secure="yes" />
+    <Property
+      Id="ENROLLMENT_TOKEN"
+      Secure="yes"
+      Hidden="yes" />
+    <Property Id="ENROLLMENT_TOKEN_FILE" Secure="yes" />
+    <Property Id="ALLOW_SOFTWARE_KEY" Secure="yes" />
+    <Property Id="EXISTING_API_BASE_URL">
+      <RegistrySearch
+        Id="ExistingApiBaseUrlSearch"
+        Root="HKLM"
+        Key="SOFTWARE\Inventory\Agent"
+        Name="ServerBaseUrl"
+        Type="raw"
+        Bitness="always64" />
+    </Property>
+    <Property Id="EXISTING_ENROLLMENT_TOKEN_FILE">
+      <RegistrySearch
+        Id="ExistingEnrollmentTokenFileSearch"
+        Root="HKLM"
+        Key="SOFTWARE\Inventory\Agent"
+        Name="EnrollmentTokenFilePath"
+        Type="raw"
+        Bitness="always64" />
+    </Property>
+    <Property Id="EXISTING_ALLOW_SOFTWARE_KEY">
+      <RegistrySearch
+        Id="ExistingAllowSoftwareKeySearch"
+        Root="HKLM"
+        Key="SOFTWARE\Inventory\Agent"
+        Name="AllowSoftwareKey"
+        Type="raw"
+        Bitness="always64" />
+    </Property>
+    <Property Id="LEGACY_AGENT_SERVICE_FOUND">
+      <RegistrySearch
+        Id="LegacyAgentServiceSearch"
+        Root="HKLM"
+        Key="SYSTEM\CurrentControlSet\Services\InventoryTpmAgent"
+        Name="ImagePath"
+        Type="raw"
+        Bitness="always64" />
+    </Property>
+    <Property Id="LEGACY_AGENT_MARKER_FOUND">
+      <RegistrySearch
+        Id="LegacyAgentMarkerSearch"
+        Root="HKLM"
+        Key="SOFTWARE\Inventory\Agent"
+        Name="Installed"
+        Type="raw"
+        Bitness="always64" />
+    </Property>
+    <Upgrade Id="A170CC8E-A7F1-4FDA-B66B-A9DB8642F6EF">
+      <UpgradeVersion
+        Minimum="0.0.0"
+        IncludeMinimum="yes"
+        OnlyDetect="yes"
+        Property="LEGACY_AGENT_PRODUCT_FOUND" />
+    </Upgrade>
+    <SetProperty
+      Id="API_BASE_URL"
+      Action="RestoreApiBaseUrl"
+      Value="[EXISTING_API_BASE_URL]"
+      After="AppSearch"
+      Sequence="first"
+      Condition="NOT API_BASE_URL AND EXISTING_API_BASE_URL" />
+    <SetProperty
+      Id="ENROLLMENT_TOKEN_FILE"
+      Action="RestoreEnrollmentTokenFile"
+      Value="[EXISTING_ENROLLMENT_TOKEN_FILE]"
+      After="RestoreApiBaseUrl"
+      Sequence="first"
+      Condition="NOT ENROLLMENT_TOKEN AND NOT ENROLLMENT_TOKEN_FILE AND EXISTING_ENROLLMENT_TOKEN_FILE" />
+    <SetProperty
+      Id="ALLOW_SOFTWARE_KEY"
+      Action="RestoreAllowSoftwareKeyTrue"
+      Value="1"
+      After="RestoreEnrollmentTokenFile"
+      Sequence="first"
+      Condition="NOT ALLOW_SOFTWARE_KEY AND (EXISTING_ALLOW_SOFTWARE_KEY = &quot;#1&quot; OR EXISTING_ALLOW_SOFTWARE_KEY = &quot;1&quot; OR EXISTING_ALLOW_SOFTWARE_KEY = &quot;true&quot;)" />
+    <SetProperty
+      Id="ALLOW_SOFTWARE_KEY"
+      Action="RestoreAllowSoftwareKeyFalse"
+      Value="0"
+      After="RestoreAllowSoftwareKeyTrue"
+      Sequence="first"
+      Condition="NOT ALLOW_SOFTWARE_KEY AND (EXISTING_ALLOW_SOFTWARE_KEY = &quot;#0&quot; OR EXISTING_ALLOW_SOFTWARE_KEY = &quot;0&quot; OR EXISTING_ALLOW_SOFTWARE_KEY = &quot;false&quot;)" />
+    <SetProperty
+      Id="ALLOW_SOFTWARE_KEY"
+      Action="DefaultAllowSoftwareKey"
+      Value="0"
+      After="RestoreAllowSoftwareKeyFalse"
+      Sequence="first"
+      Condition="NOT ALLOW_SOFTWARE_KEY" />
+    <Launch
+      Condition="Installed OR API_BASE_URL"
+      Message="API_BASE_URL is required for a new installation." />
+    <Launch
+      Condition="NOT (ENROLLMENT_TOKEN AND ENROLLMENT_TOKEN_FILE)"
+      Message="Use ENROLLMENT_TOKEN or ENROLLMENT_TOKEN_FILE, not both." />
+    <Launch
+      Condition="Installed OR ALLOW_SOFTWARE_KEY = &quot;0&quot; OR ALLOW_SOFTWARE_KEY = &quot;1&quot;"
+      Message="ALLOW_SOFTWARE_KEY must be 0 or 1." />
+    <Launch
+      Condition="REMOVE~=&quot;ALL&quot; OR (NOT LEGACY_AGENT_PRODUCT_FOUND AND NOT LEGACY_AGENT_SERVICE_FOUND AND NOT LEGACY_AGENT_MARKER_FOUND)"
+      Message="The legacy Inventory TPM Agent was detected. Uninstall it and verify that the InventoryTpmAgent service is removed before installing Inventory Endpoint Agent." />
+
+    <CustomAction
+      Id="StageEnrollmentToken"
+      FileRef="InventoryAgentExecutable"
+      ExeCommand="--stage-enrollment-token &quot;[ENROLLMENT_TOKEN]&quot; --data-directory &quot;[AGENTDATADIR]&quot;"
+      Execute="deferred"
+      Impersonate="no"
+      Return="check"
+      HideTarget="yes" />
+    <CustomAction
+      Id="RollbackEnrollmentToken"
+      FileRef="InventoryAgentExecutable"
+      ExeCommand="--delete-enrollment-token --data-directory &quot;[AGENTDATADIR]&quot;"
+      Execute="rollback"
+      Impersonate="no"
+      Return="check"
+      HideTarget="yes" />
+    <CustomAction
+      Id="DeleteEnrollmentToken"
+      FileRef="InventoryAgentExecutable"
+      ExeCommand="--delete-enrollment-token --data-directory &quot;[AGENTDATADIR]&quot;"
+      Execute="deferred"
+      Impersonate="no"
+      Return="check"
+      HideTarget="yes" />
+    <InstallExecuteSequence>
+      <Custom
+        Action="RollbackEnrollmentToken"
+        After="InstallFiles"
+        Condition="ENROLLMENT_TOKEN AND NOT REMOVE~=&quot;ALL&quot;" />
+      <Custom
+        Action="StageEnrollmentToken"
+        After="RollbackEnrollmentToken"
+        Condition="ENROLLMENT_TOKEN AND NOT REMOVE~=&quot;ALL&quot;" />
+      <Custom
+        Action="DeleteEnrollmentToken"
+        Before="RemoveFiles"
+        Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="InventoryProgramFolder" Name="Inventory">
+        <Directory Id="INSTALLFOLDER" Name="Agent" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="InventoryDataFolder" Name="Inventory">
+        <Directory Id="AGENTDATADIR" Name="Agent" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature
+      Id="MainFeature"
+      Title="Inventory Endpoint Agent"
+      Level="1">
+      <ComponentRef Id="AgentServiceComponent" />
+      <ComponentRef Id="AgentSettingsComponent" />
+      <ComponentRef Id="AgentDataDirectoryComponent" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <Component
+      Id="AgentServiceComponent"
+      Directory="INSTALLFOLDER"
+      Guid="*"
+      Bitness="always64">
+      <File
+        Id="InventoryAgentExecutable"
+        Source="$(var.PublishDir)\Inventory.Agent.exe"
+        KeyPath="yes" />
+      <File
+        Id="InventoryAgentAppSettings"
+        Source="$(var.PublishDir)\appsettings.json" />
+      <ServiceInstall
+        Id="InventoryEndpointAgentService"
+        Name="InventoryEndpointAgent"
+        DisplayName="Inventory Endpoint Agent"
+        Description="Collects signed, bounded hardware and software inventory for the Inventory Platform."
+        Type="ownProcess"
+        Start="auto"
+        Account="NT SERVICE\InventoryEndpointAgent"
+        ErrorControl="normal"
+        Interactive="no"
+        Vital="yes">
+        <util:ServiceConfig
+          FirstFailureActionType="restart"
+          SecondFailureActionType="restart"
+          ThirdFailureActionType="restart"
+          RestartServiceDelayInSeconds="60"
+          ResetPeriodInDays="1" />
+      </ServiceInstall>
+      <ServiceControl
+        Id="InventoryEndpointAgentControl"
+        Name="InventoryEndpointAgent"
+        Start="install"
+        Stop="both"
+        Remove="uninstall"
+        Wait="yes" />
+    </Component>
+  </Fragment>
+
+  <Fragment>
+    <Component
+      Id="AgentSettingsComponent"
+      Directory="INSTALLFOLDER"
+      Guid="*"
+      Bitness="always64">
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Inventory\Agent">
+        <RegistryValue
+          Name="ServerBaseUrl"
+          Type="string"
+          Value="[API_BASE_URL]" />
+        <RegistryValue
+          Name="EnrollmentTokenFilePath"
+          Type="string"
+          Value="[ENROLLMENT_TOKEN_FILE]" />
+        <RegistryValue
+          Name="DeviceKeyName"
+          Type="string"
+          Value="InventoryAgentSigningKeyV1" />
+        <RegistryValue
+          Name="AllowSoftwareKey"
+          Type="integer"
+          Value="[ALLOW_SOFTWARE_KEY]" />
+        <RegistryValue
+          Name="InstalledVersion"
+          Type="string"
+          Value="$(var.InstallerVersion)"
+          KeyPath="yes" />
+      </RegistryKey>
+      <RegistryKey
+        Root="HKLM"
+        Key="SYSTEM\CurrentControlSet\Services\EventLog\Application\Inventory Endpoint Agent">
+        <RegistryValue
+          Name="EventMessageFile"
+          Type="expandable"
+          Value="[INSTALLFOLDER]Inventory.Agent.exe" />
+        <RegistryValue
+          Name="TypesSupported"
+          Type="integer"
+          Value="7" />
+      </RegistryKey>
+    </Component>
+  </Fragment>
+
+  <Fragment>
+    <Component
+      Id="AgentDataDirectoryComponent"
+      Directory="AGENTDATADIR"
+      Guid="*"
+      Bitness="always64">
+      <CreateFolder>
+        <PermissionEx
+          Id="AgentDataDirectoryAcl"
+          Sddl="D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;S-1-5-80-2609206542-791502006-4278732640-3842405600-3050437999)" />
+      </CreateFolder>
+      <RegistryValue
+        Root="HKLM"
+        Key="SOFTWARE\Inventory\Agent"
+        Name="DataDirectory"
+        Type="string"
+        Value="[AGENTDATADIR]"
+        KeyPath="yes" />
+    </Component>
+  </Fragment>
+</Wix>

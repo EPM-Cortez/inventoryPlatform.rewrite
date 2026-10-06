@@ -1,0 +1,24 @@
+@InventoryApi = https://localhost:7240
+
+### 1. Obtain an antiforgery token and keep the response cookie.
+GET {{InventoryApi}}/api/v1/auth/csrf
+Accept: application/json
+
+### 2. Login. Replace both the token and credentials.
+POST {{InventoryApi}}/api/v1/auth/login
+Content-Type: application/json
+X-CSRF-TOKEN: {{csrfToken}}
+
+{
+  "email": "admin@example.invalid",
+  "password": "replace-with-a-secret",
+  "rememberMe": false
+}
+
+### 3. Read the authenticated principal.
+GET {{InventoryApi}}/api/v1/auth/me
+Accept: application/json
+
+### 4. List assets.
+GET {{InventoryApi}}/api/v1/assets?page=1&pageSize=50&sort=assetTag
+Accept: application/json

@@ -1,0 +1,35 @@
+# Build and editor output
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/coverage/
+**/.vs/
+**/.vscode/
+**/*.tsbuildinfo
+**/TestResults/
+**/publish/
+
+# Local configuration, runtime data and release artifacts
+.env
+.env.*
+!.env.example
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.pfx
+**/*.p12
+**/*.pem
+**/*.key
+**/secrets/
+backend/artifacts/
+backend/tmp/
+backend/src/Inventory.Api/data-protection-keys/
+backend/installer/Inventory.Agent/GeneratedFiles.wxs
+backend/src/Inventory.Api/appsettings.Development.json
+backend/src/Inventory.Api/appsettings.Local.json
+backend/.claude/settings.local.json
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,192 @@
+name: Inventory rewrite CI
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/rewrite-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/rewrite-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: "backend/global.json"
+
+      - name: Restore local tools
+        run: dotnet tool restore
+
+      - name: Restore solution
+        run: dotnet restore Inventory.Rewrite.slnx
+
+      - name: Build
+        run: dotnet build Inventory.Rewrite.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test Inventory.Rewrite.slnx -c Release --no-build --no-restore
+
+      - name: Verify formatting
+        run: dotnet format Inventory.Rewrite.slnx --verify-no-changes --no-restore
+
+      - name: Verify EF model has a migration
+        run: >-
+          dotnet tool run dotnet-ef migrations has-pending-model-changes
+          --project .\src\Inventory.Infrastructure\Inventory.Infrastructure.csproj
+          --startup-project .\src\Inventory.Infrastructure\Inventory.Infrastructure.csproj
+          --context InventoryDbContext
+          --configuration Release
+          --no-build
+
+      - name: Verify PostgreSQL EF model has a migration
+        run: >-
+          dotnet tool run dotnet-ef migrations has-pending-model-changes
+          --project .\src\Inventory.Infrastructure.PostgresMigrations\Inventory.Infrastructure.PostgresMigrations.csproj
+          --startup-project .\src\Inventory.Infrastructure.PostgresMigrations\Inventory.Infrastructure.PostgresMigrations.csproj
+          --context InventoryDbContext
+          --configuration Release
+          --no-build
+
+      - name: Verify generated OpenAPI contract
+        shell: pwsh
+        run: .\scripts\export-openapi.ps1 -Configuration Release -Verify
+
+      - name: Report vulnerable dependencies
+        shell: pwsh
+        run: |
+          dotnet list Inventory.Rewrite.slnx package --vulnerable --include-transitive
+          dotnet list .\installer\Inventory.Agent\Inventory.Agent.Installer.wixproj package --vulnerable --include-transitive
+
+      - name: Build release-manifest signer
+        run: dotnet build .\scripts\AgentReleaseSigner\AgentReleaseSigner.csproj --configuration Release
+
+      - name: Build unsigned agent MSI for packaging validation
+        shell: pwsh
+        run: .\scripts\build-agent-package.ps1 -Version '1.0.0'
+
+      - name: Verify agent MSI internals
+        shell: pwsh
+        run: >-
+          .\scripts\verify-agent-msi.ps1
+          -ExpectedVersion '1.0.0'
+
+      - name: Upload unsigned agent MSI validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-agent-msi-unsigned-ci
+          path: |
+            backend/artifacts/agent/msi/*.msi
+            backend/artifacts/agent/agent-artifacts.json
+          if-no-files-found: error
+          retention-days: 7
+
+  postgres-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: inventory
+          POSTGRES_PASSWORD: inventory-integration-test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inventory -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: "backend/global.json"
+
+      - name: Restore
+        run: dotnet restore Inventory.Rewrite.slnx
+
+      - name: Build
+        run: dotnet build Inventory.Rewrite.slnx -c Release --no-restore
+
+      - name: Run PostgreSQL compatibility workflows
+        env:
+          INVENTORY_REQUIRE_POSTGRES_TESTS: "true"
+          INVENTORY_POSTGRES_TEST_CONNECTION_STRING: >-
+            Host=127.0.0.1;Port=5432;Database=inventory_test;
+            Username=inventory;Password=inventory-integration-test;
+            SSL Mode=Disable
+        run: >-
+          dotnet test
+          ./tests/Inventory.Api.IntegrationTests/Inventory.Api.IntegrationTests.csproj
+          -c Release --no-build --no-restore
+          --filter "FullyQualifiedName~PostgresCompatibilityTests"
+
+      - name: Verify installer and scanner on Linux
+        run: >-
+          dotnet test
+          ./tests/Inventory.Api.IntegrationTests/Inventory.Api.IntegrationTests.csproj
+          -c Release --no-build --no-restore
+          --filter "FullyQualifiedName~AgentInstallerApiTests|FullyQualifiedName~ClamAvAttachmentMalwareScannerTests"
+
+      - name: Build the API container
+        working-directory: .
+        run: docker build --file backend/Dockerfile --tag inventory-api:ci backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Force typecheck
+        run: npx tsc -b --force --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

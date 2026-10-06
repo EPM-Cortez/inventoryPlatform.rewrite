@@ -1,0 +1,13 @@
+<Project Sdk="WixToolset.Sdk/4.0.6">
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <InstallerVersion Condition="'$(InstallerVersion)' == ''">1.0.1</InstallerVersion>
+    <PublishDir Condition="'$(PublishDir)' == ''">$(MSBuildProjectDirectory)\..\..\artifacts\agent\publish</PublishDir>
+    <DefineConstants>PublishDir=$(PublishDir);InstallerVersion=$(InstallerVersion)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" />
+  </ItemGroup>
+</Project>

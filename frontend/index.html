@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en-GB" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="School inventory register: assets, custody, warranties and QR identifiers." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Inventory</title>
+    <script>
+      // Applied before first paint so the shell never flashes the wrong theme.
+      (() => {
+        try {
+          const stored = localStorage.getItem('inventory.theme');
+          const theme =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+  </head>
+  <body class="h-full">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
