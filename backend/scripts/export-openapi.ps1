@@ -20,7 +20,8 @@ if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $rewriteRoot 'docs\api\openapi-v1.json'
 }
 
-& $DotNetPath build $apiProject -c $Configuration --no-restore
+& $DotNetPath build $apiProject -c $Configuration --no-restore `
+    -m:1 -nr:false -p:UseSharedCompilation=false
 if ($LASTEXITCODE -ne 0) {
     throw 'The API build failed; the OpenAPI document was not changed.'
 }

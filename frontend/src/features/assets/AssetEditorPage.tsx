@@ -513,7 +513,9 @@ function AssetEditor({ asset }: { asset?: Asset }) {
 
           <Field
             label="Serial number"
-            hint="Unique when present."
+            hint={asset?.reportedSerialNumber
+              ? `Import reported ${asset.reportedSerialNumber}; enter a verified unique serial to resolve it.`
+              : 'Unique when present.'}
             error={apiError?.fieldErrors('serialNumber')[0] ?? null}
           >
             {(controlProps) => (

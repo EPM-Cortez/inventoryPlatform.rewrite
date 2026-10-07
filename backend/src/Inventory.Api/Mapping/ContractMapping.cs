@@ -196,6 +196,22 @@ internal static class ContractMapping
                 null),
         };
 
+    public static AssetImportSerialResolutionContract ToContract(
+        this AssetImportSerialResolution resolution) =>
+        resolution switch
+        {
+            AssetImportSerialResolution.Missing =>
+                AssetImportSerialResolutionContract.Missing,
+            AssetImportSerialResolution.Verified =>
+                AssetImportSerialResolutionContract.Verified,
+            AssetImportSerialResolution.ReportedDuplicate =>
+                AssetImportSerialResolutionContract.ReportedDuplicate,
+            AssetImportSerialResolution.IgnoredPlaceholder =>
+                AssetImportSerialResolutionContract.IgnoredPlaceholder,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(resolution), resolution, null),
+        };
+
     public static AssetImportJobResponse ToContract(this AssetImportJobView job) =>
         new(
             job.Id,
@@ -245,7 +261,9 @@ internal static class ContractMapping
                         row.PurchaseDate,
                         row.WarrantyStartDate,
                         row.WarrantyEndDate,
-                        row.InferredDateFields))
+                        row.InferredDateFields,
+                        row.SourceSerialNumber,
+                        row.SerialResolution.ToContract()))
                 .ToArray(),
             job.Errors
                 .Select(
@@ -258,7 +276,8 @@ internal static class ContractMapping
                 .ToArray(),
             job.PreviewTruncated,
             job.ErrorsTruncated,
-            job.Version);
+            job.Version,
+            job.ReportedDuplicateSerialRows);
 
     public static AssetImportCommitResponse ToContract(
         this AssetImportCommitResult result) =>
@@ -505,7 +524,8 @@ internal static class ContractMapping
             asset.RetirementReason,
             asset.DisposedAtUtc,
             asset.DisposalReason,
-            asset.Version);
+            asset.Version,
+            asset.ReportedSerialNumber);
 
     public static AssetListItemResponse ToContract(this AssetListItem asset) =>
         new(

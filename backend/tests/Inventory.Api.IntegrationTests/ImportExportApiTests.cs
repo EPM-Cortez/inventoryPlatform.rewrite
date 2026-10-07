@@ -163,6 +163,222 @@ public sealed class ImportExportApiTests : IClassFixture<InventoryApiFactory>
     }
 
     [Fact]
+    public async Task CommitReleasesPreviewBudgetAndAllowsImmediateReimport()
+    {
+        using var factory = new InventoryApiFactory(
+            seedDefaultUsers: true,
+            importPreviewMaximumJobs: 1);
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            InventoryApiFactory.AdministratorEmail,
+            InventoryApiFactory.AdministratorPassword);
+        var suffix = NewSuffix();
+        var category = await CreateCategoryAsync(client, suffix);
+        var assetTag = $"REIMPORT-{suffix}";
+        var csv = BuildCsv([Row(assetTag, category.Code, serialNumber: $"SER-{suffix}")]);
+
+        using var firstValidation = await UploadAsync(
+            client, csv, AssetImportModeContract.CreateOnly);
+        firstValidation.EnsureSuccessStatusCode();
+        var firstJob = await firstValidation.Content.ReadFromJsonAsync<AssetImportJobResponse>(
+            ApiTestClient.JsonOptions);
+        Assert.NotNull(firstJob);
+
+        using var firstCommit = await client.PostAsJsonAsync(
+            $"/api/v1/imports/{firstJob.Id}/commit",
+            new CommitAssetImportRequest { Version = firstJob.Version },
+            ApiTestClient.JsonOptions);
+        firstCommit.EnsureSuccessStatusCode();
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+            var reservation = await db.ImportPreviewReservations.AsNoTracking()
+                .SingleAsync(item => item.PayloadId == firstJob.Id);
+            Assert.NotNull(reservation.PurgedAtUtc);
+            var persistedJob = await db.AssetImportJobs.AsNoTracking()
+                .SingleAsync(item => item.Id == firstJob.Id);
+            Assert.Equal("[]", persistedJob.ValidatedRowsJson);
+            Assert.Equal("[]", persistedJob.ErrorsJson);
+        }
+
+        var committedJob = await client.GetFromJsonAsync<AssetImportJobResponse>(
+            $"/api/v1/imports/{firstJob.Id}", ApiTestClient.JsonOptions);
+        Assert.Equal(AssetImportStatusContract.Committed, committedJob?.Status);
+
+        using var secondValidation = await UploadAsync(
+            client, csv, AssetImportModeContract.UpsertByAssetTag);
+        secondValidation.EnsureSuccessStatusCode();
+        var secondJob = await secondValidation.Content.ReadFromJsonAsync<AssetImportJobResponse>(
+            ApiTestClient.JsonOptions);
+        Assert.NotNull(secondJob);
+        Assert.Equal(AssetImportStatusContract.ReadyToCommit, secondJob.Status);
+        Assert.Equal(1, secondJob.UpdateRows);
+    }
+
+    [Fact]
+    public async Task DuplicateSerialsImportAsReportedWithoutInventingVerifiedSerials()
+    {
+        using var client = await CreateAdministratorClientAsync();
+        var suffix = NewSuffix();
+        var category = await CreateCategoryAsync(client, suffix);
+        var serial = $"DUP-SER-{suffix}";
+        var firstTag = $"DUP-A-{suffix}";
+        var secondTag = $"DUP-B-{suffix}";
+        var csv = BuildCsv(
+        [
+            Row(firstTag, category.Code, serialNumber: serial),
+            Row(secondTag, category.Code, serialNumber: serial.ToLowerInvariant()),
+            Row($"PLACEHOLDER-{suffix}", category.Code, serialNumber: "N/A"),
+        ]);
+
+        using var validation = await UploadAsync(
+            client, csv, AssetImportModeContract.CreateOnly);
+        validation.EnsureSuccessStatusCode();
+        var job = await validation.Content.ReadFromJsonAsync<AssetImportJobResponse>(
+            ApiTestClient.JsonOptions);
+        Assert.NotNull(job);
+        Assert.Equal(AssetImportStatusContract.ReadyToCommit, job.Status);
+        Assert.Empty(job.Errors);
+        Assert.Equal(2, job.Preview.Count(row =>
+            row.SerialResolution == AssetImportSerialResolutionContract.ReportedDuplicate));
+        Assert.Contains(job.Preview, row =>
+            row.SerialResolution == AssetImportSerialResolutionContract.IgnoredPlaceholder);
+
+        using var commit = await client.PostAsJsonAsync(
+            $"/api/v1/imports/{job.Id}/commit",
+            new CommitAssetImportRequest { Version = job.Version },
+            ApiTestClient.JsonOptions);
+        commit.EnsureSuccessStatusCode();
+
+        foreach (var tag in new[] { firstTag, secondTag })
+        {
+            var asset = await client.GetFromJsonAsync<AssetResponse>(
+                $"/api/v1/assets/by-tag/{Uri.EscapeDataString(tag)}",
+                ApiTestClient.JsonOptions);
+            Assert.NotNull(asset);
+            Assert.Null(asset.SerialNumber);
+            Assert.Equal(serial, asset.ReportedSerialNumber, ignoreCase: true);
+        }
+
+        using var export = await client.GetAsync(
+            $"/api/v1/exports/assets.csv?assetTag={Uri.EscapeDataString(firstTag)}");
+        export.EnsureSuccessStatusCode();
+        using var isolatedRevalidation = await UploadAsync(
+            client,
+            await export.Content.ReadAsByteArrayAsync(),
+            AssetImportModeContract.UpsertByAssetTag);
+        isolatedRevalidation.EnsureSuccessStatusCode();
+        var isolatedJob = await isolatedRevalidation.Content
+            .ReadFromJsonAsync<AssetImportJobResponse>(ApiTestClient.JsonOptions);
+        Assert.NotNull(isolatedJob);
+        Assert.Equal(
+            AssetImportSerialResolutionContract.ReportedDuplicate,
+            Assert.Single(isolatedJob.Preview).SerialResolution);
+        using var isolatedCommit = await client.PostAsJsonAsync(
+            $"/api/v1/imports/{isolatedJob.Id}/commit",
+            new CommitAssetImportRequest { Version = isolatedJob.Version },
+            ApiTestClient.JsonOptions);
+        isolatedCommit.EnsureSuccessStatusCode();
+        var isolatedAsset = await client.GetFromJsonAsync<AssetResponse>(
+            $"/api/v1/assets/by-tag/{Uri.EscapeDataString(firstTag)}",
+            ApiTestClient.JsonOptions);
+        Assert.Null(isolatedAsset?.SerialNumber);
+        Assert.Equal(serial, isolatedAsset?.ReportedSerialNumber, ignoreCase: true);
+
+        using var revalidation = await UploadAsync(
+            client, csv, AssetImportModeContract.UpsertByAssetTag);
+        revalidation.EnsureSuccessStatusCode();
+        var secondJob = await revalidation.Content.ReadFromJsonAsync<AssetImportJobResponse>(
+            ApiTestClient.JsonOptions);
+        Assert.Equal(AssetImportStatusContract.ReadyToCommit, secondJob?.Status);
+        using var recommit = await client.PostAsJsonAsync(
+            $"/api/v1/imports/{secondJob!.Id}/commit",
+            new CommitAssetImportRequest { Version = secondJob.Version },
+            ApiTestClient.JsonOptions);
+        recommit.EnsureSuccessStatusCode();
+        var result = await recommit.Content.ReadFromJsonAsync<AssetImportCommitResponse>(
+            ApiTestClient.JsonOptions);
+        Assert.Equal(3, result?.UnchangedRows);
+    }
+
+    [Fact]
+    public async Task ExistingVerifiedSerialRemainsOwnedWhenAnotherAssetImportsIt()
+    {
+        using var client = await CreateAdministratorClientAsync();
+        var suffix = NewSuffix();
+        var category = await CreateCategoryAsync(client, suffix);
+        var serial = $"EXIST-SER-{suffix}";
+        var existingTag = $"EXIST-A-{suffix}";
+        using var existingResponse = await client.PostAsJsonAsync(
+            "/api/v1/assets",
+            new CreateAssetRequest
+            {
+                AssetTag = existingTag,
+                CategoryId = category.Id,
+                SerialNumber = serial,
+            },
+            ApiTestClient.JsonOptions);
+        existingResponse.EnsureSuccessStatusCode();
+
+        var newTag = $"EXIST-B-{suffix}";
+        using var validation = await UploadAsync(
+            client,
+            BuildCsv([
+                Row(existingTag, category.Code, serialNumber: serial),
+                Row(newTag, category.Code, serialNumber: serial),
+            ]),
+            AssetImportModeContract.UpsertByAssetTag);
+        validation.EnsureSuccessStatusCode();
+        var job = await validation.Content.ReadFromJsonAsync<AssetImportJobResponse>(
+            ApiTestClient.JsonOptions);
+        Assert.NotNull(job);
+        Assert.Equal(AssetImportStatusContract.ReadyToCommit, job.Status);
+        Assert.Equal(
+            AssetImportSerialResolutionContract.Verified,
+            job.Preview.Single(row => row.AssetTag == existingTag).SerialResolution);
+        Assert.Equal(
+            AssetImportSerialResolutionContract.ReportedDuplicate,
+            job.Preview.Single(row => row.AssetTag == newTag).SerialResolution);
+
+        using var commit = await client.PostAsJsonAsync(
+            $"/api/v1/imports/{job.Id}/commit",
+            new CommitAssetImportRequest { Version = job.Version },
+            ApiTestClient.JsonOptions);
+        commit.EnsureSuccessStatusCode();
+        var existing = await client.GetFromJsonAsync<AssetResponse>(
+            $"/api/v1/assets/by-tag/{Uri.EscapeDataString(existingTag)}",
+            ApiTestClient.JsonOptions);
+        Assert.Equal(serial, existing?.SerialNumber);
+        Assert.Null(existing?.ReportedSerialNumber);
+        var imported = await client.GetFromJsonAsync<AssetResponse>(
+            $"/api/v1/assets/by-tag/{Uri.EscapeDataString(newTag)}",
+            ApiTestClient.JsonOptions);
+        Assert.Null(imported?.SerialNumber);
+        Assert.Equal(serial, imported?.ReportedSerialNumber);
+
+        using var correctedResponse = await client.PutAsJsonAsync(
+            $"/api/v1/assets/{imported!.Id}",
+            new UpdateAssetRequest
+            {
+                AssetTag = imported.AssetTag,
+                CategoryId = imported.Category.Id,
+                Manufacturer = imported.Manufacturer,
+                Model = imported.Model,
+                Supplier = imported.Supplier,
+                SerialNumber = $"CORRECTED-{suffix}",
+                Status = imported.Status,
+                Condition = imported.Condition,
+                Version = imported.Version,
+            },
+            ApiTestClient.JsonOptions);
+        correctedResponse.EnsureSuccessStatusCode();
+        var corrected = await correctedResponse.Content.ReadFromJsonAsync<AssetResponse>(
+            ApiTestClient.JsonOptions);
+        Assert.Equal($"CORRECTED-{suffix}", corrected?.SerialNumber);
+        Assert.Null(corrected?.ReportedSerialNumber);
+    }
+
+    [Fact]
     public async Task StrLegacyRegisterCanValidateCommitAndPreserveItsAssetFields()
     {
         using var client = await CreateAdministratorClientAsync();

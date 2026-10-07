@@ -66,6 +66,9 @@ public sealed class Asset
 
     public string? SerialNumberNormalized { get; private set; }
 
+    // Import evidence only. This value is not a verified unique identifier.
+    public string? ReportedSerialNumber { get; private set; }
+
     public string? LanMacAddress { get; private set; }
 
     public Guid? BiosGuid { get; private set; }
@@ -112,6 +115,27 @@ public sealed class Asset
 
     public static Asset Create(AssetDetails details, DateTimeOffset createdAtUtc) =>
         new(Guid.NewGuid(), details, createdAtUtc);
+
+    public bool SetReportedSerialNumber(
+        string? reportedSerialNumber,
+        Guid expectedVersion,
+        DateTimeOffset updatedAtUtc)
+    {
+        EnsureVersion(expectedVersion);
+        EnsureMutable();
+        ValidateUtc(updatedAtUtc);
+        var normalized = TextRules.Optional(
+            reportedSerialNumber, nameof(ReportedSerialNumber), 200);
+        if (ReportedSerialNumber == normalized)
+        {
+            return false;
+        }
+
+        ReportedSerialNumber = normalized;
+        UpdatedAtUtc = updatedAtUtc;
+        Version = Guid.NewGuid();
+        return true;
+    }
 
     public IReadOnlyDictionary<string, FieldChange> Update(
         AssetDetails details,

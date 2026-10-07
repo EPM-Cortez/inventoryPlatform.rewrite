@@ -41,6 +41,11 @@ export function AssetDetailsTab({ asset, editPath }: { asset: Asset; editPath?: 
           <Spec label="Serial number" mono>
             {asset.serialNumber}
           </Spec>
+          {asset.reportedSerialNumber && (
+            <Spec label="Reported serial (unverified)" mono>
+              {asset.reportedSerialNumber}
+            </Spec>
+          )}
           <Spec label="Ownership">{asset.ownership}</Spec>
           <Spec label="Legacy ID" mono>
             {asset.legacyId}

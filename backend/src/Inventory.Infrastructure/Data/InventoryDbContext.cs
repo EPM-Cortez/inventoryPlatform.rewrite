@@ -1075,6 +1075,7 @@ public sealed class InventoryDbContext
             entity.Property(asset => asset.Model).HasMaxLength(150);
             entity.Property(asset => asset.SerialNumber).HasMaxLength(200);
             entity.Property(asset => asset.SerialNumberNormalized).HasMaxLength(200);
+            entity.Property(asset => asset.ReportedSerialNumber).HasMaxLength(200);
             entity.HasIndex(asset => asset.SerialNumberNormalized)
                 .IsUnique()
                 .HasFilter("\"SerialNumberNormalized\" IS NOT NULL")

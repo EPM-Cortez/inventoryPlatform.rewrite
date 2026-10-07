@@ -28,6 +28,11 @@ public interface IImportPreviewBudget
         ImportPreviewPayloadKind kind,
         CancellationToken cancellationToken);
 
+    Task ReleaseCommittedAsync(
+        Guid payloadId,
+        ImportPreviewPayloadKind kind,
+        CancellationToken cancellationToken);
+
     Task PreserveLegacyEvidenceAsync(
         Guid runId,
         Guid assetImportJobId,

@@ -202,7 +202,8 @@ public sealed record AssetResponse(
     string? RetirementReason,
     DateTimeOffset? DisposedAtUtc,
     string? DisposalReason,
-    Guid Version);
+    Guid Version,
+    string? ReportedSerialNumber = null);
 
 public sealed record WarrantySummaryResponse(
     WarrantyStateContract State,

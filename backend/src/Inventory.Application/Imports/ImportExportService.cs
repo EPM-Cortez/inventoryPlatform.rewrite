@@ -198,10 +198,17 @@ public sealed class ImportExportService
         }
 
         AddFileDuplicateErrors(candidates, errors);
+        var duplicateSerials = candidates
+            .Where(row => row.SerialNumberNormalized is not null)
+            .GroupBy(row => row.SerialNumberNormalized!, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.Ordinal);
         var lookups = await _repository.GetImportLookupsAsync(
             BuildLookupRequest(candidates),
             cancellationToken);
-        var validatedRows = ValidateCandidates(candidates, lookups, mode, errors);
+        var validatedRows = ValidateCandidates(
+            candidates, lookups, duplicateSerials, mode, errors);
 
         return await PersistValidationAsync(
             fileName,
@@ -224,8 +231,11 @@ public sealed class ImportExportService
             forUpdate: false,
             cancellationToken)
             ?? throw new ResourceNotFoundException("Import job", importJobId);
-        await _previewBudget.EnsureAvailableAsync(
-            job.Id, ImportPreviewPayloadKind.Asset, cancellationToken);
+        if (job.Status != AssetImportStatus.Committed)
+        {
+            await _previewBudget.EnsureAvailableAsync(
+                job.Id, ImportPreviewPayloadKind.Asset, cancellationToken);
+        }
         return ToView(job);
     }
 
@@ -253,7 +263,7 @@ public sealed class ImportExportService
                         row.AssetId,
                         row.AssetTag,
                         row.DeviceName,
-                        row.SerialNumber,
+                        row.SourceSerialNumber ?? row.SerialNumber,
                         row.ResolvedCategoryCode ?? row.Category,
                         row.CategoryWillBeCreated,
                         row.Status,
@@ -263,7 +273,8 @@ public sealed class ImportExportService
                         row.AssignmentResolution,
                         row.AssignedToDisplayName,
                         row.LegacyId,
-                        row.InferredDateFields ?? []))
+                        row.InferredDateFields ?? [],
+                        row.SerialResolution))
                 .ToArray(),
             DeserializeErrors(job.ErrorsJson));
     }
@@ -277,8 +288,11 @@ public sealed class ImportExportService
             forUpdate: false,
             cancellationToken)
             ?? throw new ResourceNotFoundException("Import job", importJobId);
-        await _previewBudget.EnsureAvailableAsync(
-            job.Id, ImportPreviewPayloadKind.Asset, cancellationToken);
+        if (job.Status != AssetImportStatus.Committed)
+        {
+            await _previewBudget.EnsureAvailableAsync(
+                job.Id, ImportPreviewPayloadKind.Asset, cancellationToken);
+        }
         var errors = DeserializeErrors(job.ErrorsJson);
         var rows = errors.Select(
             error => (IReadOnlyList<string?>)
@@ -309,6 +323,13 @@ public sealed class ImportExportService
             cancellationToken)
             ?? throw new ResourceNotFoundException("Import job", importJobId);
         var actor = _currentUser.RequireActor();
+
+        if (job.Status == AssetImportStatus.Committed)
+        {
+            throw await RecordCommitRejectionAsync(
+                job, actor, "import_not_ready",
+                "The import job has already been committed.", cancellationToken);
+        }
 
         await _previewBudget.EnsureAvailableAsync(
             job.Id, ImportPreviewPayloadKind.Asset, cancellationToken);
@@ -422,6 +443,26 @@ public sealed class ImportExportService
                 now,
                 changedFields);
 
+            if (row.SerialResolution is AssetImportSerialResolution.Verified or
+                AssetImportSerialResolution.ReportedDuplicate)
+            {
+                try
+                {
+                    var reported = row.SerialResolution ==
+                        AssetImportSerialResolution.ReportedDuplicate
+                            ? row.SourceSerialNumber
+                            : null;
+                    if (asset.SetReportedSerialNumber(reported, asset.Version, now))
+                    {
+                        changedFields.Add(nameof(Asset.ReportedSerialNumber));
+                    }
+                }
+                catch (DomainRuleException exception)
+                {
+                    throw ToApplicationException(exception);
+                }
+            }
+
             warranties.TryGetValue(asset.Id, out var warranty);
             ApplyWarranty(row, asset, warranty, now, changedFields);
 
@@ -459,6 +500,11 @@ public sealed class ImportExportService
                             categoryCreated = row.CategoryWillBeCreated,
                             locationCreated = row.LocationWillBeCreated,
                             assignmentResolution = row.AssignmentResolution,
+                            serialResolution = row.SerialResolution,
+                            reportedSerialNumber = row.SerialResolution ==
+                                AssetImportSerialResolution.ReportedDuplicate
+                                    ? row.SourceSerialNumber
+                                    : null,
                             inferredDateFields = row.InferredDateFields ?? [],
                             changedFields = changedFields.Order(StringComparer.Ordinal),
                         },
@@ -516,7 +562,12 @@ public sealed class ImportExportService
                         row =>
                             row.AssignmentResolution ==
                             AssetImportAssignmentResolution.Unassigned),
+                    reportedDuplicateSerialRows = commitRows.Count(
+                        row => row.SerialResolution ==
+                            AssetImportSerialResolution.ReportedDuplicate),
                 }));
+        await _previewBudget.ReleaseCommittedAsync(
+            job.Id, ImportPreviewPayloadKind.Asset, cancellationToken);
         try
         {
             await SaveChangesAsync(cancellationToken);
@@ -723,6 +774,9 @@ public sealed class ImportExportService
                         row =>
                             row.AssignmentResolution ==
                             AssetImportAssignmentResolution.Unassigned),
+                    reportedDuplicateSerialRows = rows.Count(
+                        row => row.SerialResolution ==
+                            AssetImportSerialResolution.ReportedDuplicate),
                 }));
                 await SaveChangesAsync(token);
                 return ToView(job);
@@ -733,6 +787,7 @@ public sealed class ImportExportService
     private static List<ValidatedAssetImportRow> ValidateCandidates(
         IReadOnlyList<CandidateRow> candidates,
         ImportLookupSnapshot lookups,
+        HashSet<string> duplicateSerials,
         AssetImportMode mode,
         List<AssetImportError> errors)
     {
@@ -874,20 +929,37 @@ public sealed class ImportExportService
                     candidate.AssetTag);
             }
 
-            if (candidate.SerialNumberNormalized is not null &&
+            var serialConflictsWithAsset =
+                candidate.SerialNumberNormalized is not null &&
                 assetsBySerial.TryGetValue(
                     candidate.SerialNumberNormalized,
                     out var serialMatches) &&
-                serialMatches.Any(asset => asset.Id != matchedAsset?.Id))
-            {
-                AddError(
-                    errors,
-                    candidate.RowNumber,
-                    "serialNumber",
-                    "duplicate_serial_number",
-                    "The serial number is already in use by another asset.",
-                    candidate.SerialNumber);
-            }
+                serialMatches.Any(asset => asset.Id != matchedAsset?.Id);
+            var serialIsRepeatedInFile =
+                candidate.SerialNumberNormalized is not null &&
+                duplicateSerials.Contains(candidate.SerialNumberNormalized) &&
+                matchedAsset?.SerialNumberNormalized !=
+                    candidate.SerialNumberNormalized;
+            var serialWasPreviouslyReported =
+                candidate.SerialNumberNormalized is not null &&
+                matchedAsset?.ReportedSerialNumber is not null &&
+                NormalizeKey(matchedAsset.ReportedSerialNumber) ==
+                    candidate.SerialNumberNormalized;
+            var serialResolution = candidate.SerialNumber is null
+                ? AssetImportSerialResolution.Missing
+                : candidate.SerialNumberNormalized is null
+                    ? AssetImportSerialResolution.IgnoredPlaceholder
+                    : serialConflictsWithAsset || serialIsRepeatedInFile ||
+                      serialWasPreviouslyReported
+                        ? AssetImportSerialResolution.ReportedDuplicate
+                        : AssetImportSerialResolution.Verified;
+            var verifiedSerial = serialResolution == AssetImportSerialResolution.Verified
+                ? candidate.SerialNumber
+                : matchedAsset?.SerialNumber;
+            var verifiedSerialNormalized = serialResolution ==
+                    AssetImportSerialResolution.Verified
+                ? candidate.SerialNumberNormalized
+                : matchedAsset?.SerialNumberNormalized;
 
             if (hadExistingErrors ||
                 errors.Any(error => error.RowNumber == candidate.RowNumber) ||
@@ -927,8 +999,8 @@ public sealed class ImportExportService
                     candidate.Description,
                     candidate.Manufacturer,
                     candidate.Model,
-                    candidate.SerialNumber,
-                    candidate.SerialNumberNormalized,
+                    verifiedSerial,
+                    verifiedSerialNormalized,
                     candidate.LanMacAddress,
                     candidate.BiosGuid,
                     candidate.Ownership,
@@ -958,7 +1030,9 @@ public sealed class ImportExportService
                     location?.Name,
                     location?.WillBeCreated ?? false,
                     candidate.InferredDateFields,
-                    assignmentResolution));
+                    assignmentResolution,
+                    candidate.SerialNumber,
+                    serialResolution));
         }
 
         return validated;
@@ -1201,7 +1275,9 @@ public sealed class ImportExportService
             manufacturer,
             model,
             serialNumber,
-            serialNumber is null ? null : NormalizeKey(serialNumber),
+            serialNumber is null || IsPlaceholderSerialNumber(serialNumber)
+                ? null
+                : NormalizeKey(serialNumber),
             lanMacAddress,
             biosGuid,
             ownership,
@@ -1372,22 +1448,6 @@ public sealed class ImportExportService
             }
         }
 
-        foreach (var duplicate in candidates
-                     .Where(row => row.SerialNumberNormalized is not null)
-                     .GroupBy(row => row.SerialNumberNormalized!, StringComparer.Ordinal)
-                     .Where(group => group.Count() > 1))
-        {
-            foreach (var row in duplicate)
-            {
-                AddError(
-                    errors,
-                    row.RowNumber,
-                    "serialNumber",
-                    "duplicate_serial_number_in_file",
-                    "The serial number occurs more than once in this CSV.",
-                    row.SerialNumber);
-            }
-        }
     }
 
     private static ImportLookupRequest BuildLookupRequest(
@@ -2017,12 +2077,16 @@ public sealed class ImportExportService
                         row.PurchaseDate,
                         row.WarrantyStartDate,
                         row.WarrantyEndDate,
-                        row.InferredDateFields ?? []))
+                        row.InferredDateFields ?? [],
+                        row.SourceSerialNumber,
+                        row.SerialResolution))
                 .ToArray(),
             errors.Take(_settings.PreviewErrors).ToArray(),
             rows.Count > _settings.PreviewRows,
             errors.Count > _settings.PreviewErrors,
-            job.Version);
+            job.Version,
+            rows.Count(row => row.SerialResolution ==
+                AssetImportSerialResolution.ReportedDuplicate));
     }
 
     private static IReadOnlyList<string?> ToCsvFields(AssetExportRow row) =>
@@ -2034,7 +2098,7 @@ public sealed class ImportExportService
         row.Description,
         row.Manufacturer,
         row.Model,
-        row.SerialNumber,
+        row.SerialNumber ?? row.ReportedSerialNumber,
         row.LanMacAddress,
         row.BiosGuid?.ToString("D"),
         row.Ownership,
@@ -2965,6 +3029,12 @@ public sealed class ImportExportService
 
     private static string NormalizeKey(string value) =>
         value.Trim().ToUpper(CultureInfo.InvariantCulture);
+
+    private static bool IsPlaceholderSerialNumber(string value) =>
+        NormalizeKey(value) is
+            "N/A" or "NA" or "NONE" or "UNKNOWN" or "NOT KNOWN" or
+            "NO SERIAL" or "NO SERIAL NUMBER" or "SYSTEM SERIAL NUMBER" or
+            "DEFAULT STRING" or "TO BE FILLED BY O.E.M.";
 
     private static string Hash(ReadOnlySpan<byte> content) =>
         Convert.ToHexString(SHA256.HashData(content));

@@ -589,6 +589,10 @@ namespace Inventory.Infrastructure.PostgresMigrations.Migrations
                     b.Property<DateOnly?>("PurchaseDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("ReportedSerialNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<DateTime?>("RetiredAtUtc")
                         .HasColumnType("timestamp with time zone");
 

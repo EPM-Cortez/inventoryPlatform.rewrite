@@ -101,6 +101,14 @@ public enum AssetImportAssignmentResolution
     Unassigned,
 }
 
+public enum AssetImportSerialResolution
+{
+    Missing,
+    Verified,
+    ReportedDuplicate,
+    IgnoredPlaceholder,
+}
+
 public sealed record AssetImportPreviewRow(
     int RowNumber,
     AssetImportAction Action,
@@ -120,7 +128,9 @@ public sealed record AssetImportPreviewRow(
     DateOnly? PurchaseDate,
     DateOnly? WarrantyStartDate,
     DateOnly? WarrantyEndDate,
-    IReadOnlyList<string> InferredDateFields);
+    IReadOnlyList<string> InferredDateFields,
+    string? SourceSerialNumber = null,
+    AssetImportSerialResolution SerialResolution = AssetImportSerialResolution.Missing);
 
 public sealed record AssetImportJobView(
     Guid Id,
@@ -153,7 +163,8 @@ public sealed record AssetImportJobView(
     IReadOnlyList<AssetImportError> Errors,
     bool PreviewTruncated,
     bool ErrorsTruncated,
-    Guid Version);
+    Guid Version,
+    int ReportedDuplicateSerialRows = 0);
 
 public sealed record AssetImportCommitResult(
     Guid ImportJobId,
@@ -231,6 +242,8 @@ public sealed record ImportWarrantyLookup(
 public sealed record ImportAssetLookup(
     Guid Id,
     string AssetTagNormalized,
+    string? SerialNumber,
+    string? ReportedSerialNumber,
     string? SerialNumberNormalized,
     AssetStatus Status,
     Guid Version,
@@ -292,7 +305,8 @@ public sealed record AssetExportRow(
     string? OperatingSystemVersion,
     bool? Windows11Compliant,
     string? LegacyId,
-    string? Notes);
+    string? Notes,
+    string? ReportedSerialNumber = null);
 
 internal sealed record ValidatedAssetImportRow(
     int RowNumber,
@@ -352,4 +366,6 @@ internal sealed record ValidatedAssetImportRow(
     bool LocationWillBeCreated = false,
     IReadOnlyList<string>? InferredDateFields = null,
     AssetImportAssignmentResolution AssignmentResolution =
-        AssetImportAssignmentResolution.None);
+        AssetImportAssignmentResolution.None,
+    string? SourceSerialNumber = null,
+    AssetImportSerialResolution SerialResolution = AssetImportSerialResolution.Missing);

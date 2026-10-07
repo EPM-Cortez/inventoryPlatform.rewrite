@@ -884,8 +884,9 @@ export function useCommitAssetImport() {
       void queryClient.invalidateQueries({ queryKey: keys.departments.all });
       void queryClient.invalidateQueries({ queryKey: keys.categories.all });
       void queryClient.invalidateQueries({ queryKey: keys.locations.all });
-      void queryClient.invalidateQueries({
+      queryClient.removeQueries({
         queryKey: keys.imports.detail(variables.importJobId),
+        exact: true,
       });
     },
   });

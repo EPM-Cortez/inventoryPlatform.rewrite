@@ -459,6 +459,19 @@ public sealed class LegacyReconciliationService
 
         foreach (var row in snapshot.Rows)
         {
+            if (row.SerialResolution == AssetImportSerialResolution.ReportedDuplicate)
+            {
+                issues.Add(
+                    CreateIssue(
+                        row.RowNumber,
+                        "serialNumber",
+                        "duplicate_serial_preserved_as_reported",
+                        "duplicate",
+                        "warning",
+                        "The source serial is duplicated; it will be retained as a reported serial, not a verified identifier.",
+                        row.SerialNumber));
+            }
+
             if (row.CategoryWillBeCreated)
             {
                 issues.Add(

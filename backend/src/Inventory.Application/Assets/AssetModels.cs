@@ -87,7 +87,8 @@ public sealed record AssetView(
     string? RetirementReason,
     DateTimeOffset? DisposedAtUtc,
     string? DisposalReason,
-    Guid Version);
+    Guid Version,
+    string? ReportedSerialNumber = null);
 
 public sealed record WarrantySummaryView(
     WarrantyState State,

@@ -141,6 +141,8 @@ public sealed class EfImportExportRepository : IImportExportRepository
                     asset => new ImportAssetLookup(
                         asset.Id,
                         asset.AssetTagNormalized,
+                        asset.SerialNumber,
+                        asset.ReportedSerialNumber,
                         asset.SerialNumberNormalized,
                         asset.Status,
                         asset.Version,
@@ -459,7 +461,8 @@ public sealed class EfImportExportRepository : IImportExportRepository
                     row.Asset.OperatingSystemVersion,
                     row.Asset.Windows11Compliant,
                     row.Asset.LegacyId,
-                    row.Asset.Notes))
+                    row.Asset.Notes,
+                    row.Asset.ReportedSerialNumber))
             .ToArrayAsync(cancellationToken);
     }
 

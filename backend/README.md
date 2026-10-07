@@ -55,8 +55,9 @@ MSI. An estate rollout remains subject to the documented signing and pilot gates
 - Strict UTF-8 CSV validation jobs with previews, downloadable row/column errors,
   SHA-256 snapshots, stable tag generation for blank import tags, explicit versioned
   commit, planned creation of missing categories/locations, deterministic partial-date
-  normalization, atomic create/upsert reconciliation, seven-day preview retention,
-  and shared cumulative job/byte budgets
+  normalization, duplicate-serial preservation as reported evidence, atomic
+  create/upsert reconciliation, immediate committed-preview release, seven-day
+  uncommitted preview retention, and shared cumulative job/byte budgets
 - Filtered stable-schema asset CSV export with current custody/warranty data,
   spreadsheet-formula neutralisation, round-trip tests, limits, and audit records
 - Persisted people, department, and location CSV validation/commit jobs plus
@@ -64,7 +65,8 @@ MSI. An estate rollout remains subject to the documented signing and pilot gates
   reference files
 - Backward-compatible canonical schema v1 input plus schema v2 and direct validation of
   the sampled 20-column STR asset-register format
-- Case-insensitive asset-tag uniqueness and duplicate serial protection
+- Case-insensitive asset-tag and verified-serial uniqueness; import conflicts
+  retain the original as a separate reported serial
 - Application-managed optimistic concurrency with `409 Conflict`
 - Asset retire/restore/dispose and append-only readable asset history
 - Manual asset history notes

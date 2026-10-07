@@ -76,8 +76,11 @@ public sealed partial class ReferenceDataExchangeService
             ?? throw new ResourceNotFoundException(
                 "Reference-data import job",
                 importJobId);
-        await _previewBudget.EnsureAvailableAsync(
-            job.Id, ImportPreviewPayloadKind.ReferenceData, cancellationToken);
+        if (job.Status != ReferenceDataImportStatus.Committed)
+        {
+            await _previewBudget.EnsureAvailableAsync(
+                job.Id, ImportPreviewPayloadKind.ReferenceData, cancellationToken);
+        }
         return ToView(job);
     }
 
@@ -92,8 +95,11 @@ public sealed partial class ReferenceDataExchangeService
             ?? throw new ResourceNotFoundException(
                 "Reference-data import job",
                 importJobId);
-        await _previewBudget.EnsureAvailableAsync(
-            job.Id, ImportPreviewPayloadKind.ReferenceData, cancellationToken);
+        if (job.Status != ReferenceDataImportStatus.Committed)
+        {
+            await _previewBudget.EnsureAvailableAsync(
+                job.Id, ImportPreviewPayloadKind.ReferenceData, cancellationToken);
+        }
         var errors = DeserializeErrors(job.ErrorsJson);
         var rows = errors.Select(
             error => (IReadOnlyList<string?>)
@@ -126,6 +132,13 @@ public sealed partial class ReferenceDataExchangeService
                 "Reference-data import job",
                 importJobId);
         var actor = _currentUser.RequireActor();
+
+        if (job.Status == ReferenceDataImportStatus.Committed)
+        {
+            throw await RecordCommitRejectionAsync(
+                job, actor, "import_not_ready",
+                "The import job has already been committed.", cancellationToken);
+        }
 
         await _previewBudget.EnsureAvailableAsync(
             job.Id, ImportPreviewPayloadKind.ReferenceData, cancellationToken);
@@ -295,6 +308,9 @@ public sealed partial class ReferenceDataExchangeService
                     updatedRows = counts.Updated,
                     unchangedRows = counts.Unchanged,
                 }));
+
+        await _previewBudget.ReleaseCommittedAsync(
+            job.Id, ImportPreviewPayloadKind.ReferenceData, cancellationToken);
 
         await SaveChangesAsync(cancellationToken);
 

@@ -76,6 +76,10 @@ All four must pass before a change is done.
 - An unresolvable owner silently becomes an unassigned `inStock` asset instead of
   an error. Always report the count — a quietly dropped owner is worse than a
   loud failure.
+- Duplicate import serials are source evidence, not verified unique identifiers.
+  Show `reportedDuplicateSerialRows` and each row's `serialResolution` before
+  commit; asset detail exposes the original as `reportedSerialNumber`. Never
+  display it as the verified `serialNumber` or invent a replacement.
 - **Agent data is read-only evidence.** Never build an edit affordance over a
   snapshot field, and never show one without its collection date — stale evidence
   presented as current is actively misleading.

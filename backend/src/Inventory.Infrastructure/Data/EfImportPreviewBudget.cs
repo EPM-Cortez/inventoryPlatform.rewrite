@@ -71,9 +71,85 @@ public sealed class EfImportPreviewBudget : IImportPreviewBudget
                 reservation => (long)reservation.PayloadBytes,
                 cancellationToken);
             var newJob = kind == ImportPreviewPayloadKind.LegacyReport ? 0 : 1;
-            if (userJobs + newJob > _options.MaximumActiveJobsPerUser ||
+            bool OverBudget() =>
+                userJobs + newJob > _options.MaximumActiveJobsPerUser ||
                 userBytes + payloadBytes > _options.MaximumBytesPerUser ||
-                overallBytes + payloadBytes > _options.MaximumBytesOverall)
+                overallBytes + payloadBytes > _options.MaximumBytesOverall;
+
+            // Failed validations cannot be committed. When a user tries again,
+            // recycle their oldest failed previews first so correction loops do
+            // not exhaust the budget. Never evict a reconciliation report or its
+            // source evidence, and never evict another user's preview.
+            if (kind != ImportPreviewPayloadKind.LegacyReport && OverBudget())
+            {
+                var supersedable = await _dbContext.ImportPreviewReservations
+                    .Where(reservation =>
+                        reservation.CreatedByUserId == createdByUserId &&
+                        reservation.PurgedAtUtc == null &&
+                        reservation.PreservedAtUtc == null &&
+                        reservation.ExpiresAtUtc > now &&
+                        reservation.Kind != ImportPreviewPayloadKind.LegacyReport)
+                    .OrderBy(reservation => reservation.CreatedAtUtc)
+                    .ThenBy(reservation => reservation.PayloadId)
+                    .ToListAsync(cancellationToken);
+                foreach (var previous in supersedable)
+                {
+                    if (!OverBudget())
+                    {
+                        break;
+                    }
+
+                    var canSupersede = previous.Kind switch
+                    {
+                        ImportPreviewPayloadKind.Asset =>
+                            await CanSupersedeAssetAsync(previous.PayloadId, cancellationToken),
+                        ImportPreviewPayloadKind.ReferenceData =>
+                            await CanSupersedeReferenceAsync(
+                                previous.PayloadId, cancellationToken),
+                        _ => false,
+                    };
+                    if (!canSupersede)
+                    {
+                        continue;
+                    }
+
+                    if (previous.Kind == ImportPreviewPayloadKind.Asset)
+                    {
+                        var job = await _dbContext.AssetImportJobs.FindAsync(
+                            [previous.PayloadId], cancellationToken);
+                        job!.PurgePreviewPayload();
+                    }
+                    else
+                    {
+                        var job = await _dbContext.ReferenceDataImportJobs.FindAsync(
+                            [previous.PayloadId], cancellationToken);
+                        job!.PurgePreviewPayload();
+                    }
+
+                    previous.MarkPurged(now);
+                    userJobs--;
+                    userBytes -= previous.PayloadBytes;
+                    overallBytes -= previous.PayloadBytes;
+                    _dbContext.AuditLogs.Add(AuditLog.Create(
+                        actorUserId: null,
+                        actorDisplayName: null,
+                        action: "import.preview.superseded",
+                        targetType: previous.Kind == ImportPreviewPayloadKind.Asset
+                            ? "asset_import_job"
+                            : "reference_data_import_job",
+                        targetId: previous.PayloadId.ToString(),
+                        occurredAtUtc: now,
+                        outcome: "succeeded",
+                        detailsJson: System.Text.Json.JsonSerializer.Serialize(new
+                        {
+                            previous.PayloadBytes,
+                            previous.CreatedByUserId,
+                            replacementPayloadId = payloadId,
+                        })));
+                }
+            }
+
+            if (OverBudget())
             {
                 throw new ResourceConflictException(
                     "import_preview_budget_exceeded",
@@ -134,6 +210,52 @@ public sealed class EfImportPreviewBudget : IImportPreviewBudget
                 reservation.PurgedAtUtc == null &&
                 reservation.ExpiresAtUtc > _clock.UtcNow,
             cancellationToken);
+
+    public async Task ReleaseCommittedAsync(
+        Guid payloadId,
+        ImportPreviewPayloadKind kind,
+        CancellationToken cancellationToken)
+    {
+        var reservation = await _dbContext.ImportPreviewReservations.SingleAsync(
+            item => item.PayloadId == payloadId && item.Kind == kind,
+            cancellationToken);
+        if (reservation.PurgedAtUtc is not null || reservation.PreservedAtUtc is not null)
+        {
+            return;
+        }
+
+        var now = _clock.UtcNow;
+        switch (kind)
+        {
+            case ImportPreviewPayloadKind.Asset:
+                // A reconciliation run may still need the exact validated source rows.
+                // Keep its normal retention and quota until sign-off preserves it;
+                // preserving an unsigned run here would bypass expiry forever.
+                if (await _dbContext.LegacyReconciliationRuns.AnyAsync(
+                        run => run.AssetImportJobId == payloadId,
+                        cancellationToken))
+                {
+                    return;
+                }
+                else
+                {
+                    var job = await _dbContext.AssetImportJobs.SingleAsync(
+                        item => item.Id == payloadId, cancellationToken);
+                    job.PurgePreviewPayload();
+                    reservation.MarkPurged(now);
+                }
+
+                break;
+            case ImportPreviewPayloadKind.ReferenceData:
+                var referenceJob = await _dbContext.ReferenceDataImportJobs.SingleAsync(
+                    item => item.Id == payloadId, cancellationToken);
+                referenceJob.PurgePreviewPayload();
+                reservation.MarkPurged(now);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
+        }
+    }
 
     public async Task PreserveLegacyEvidenceAsync(
         Guid runId,
@@ -250,6 +372,28 @@ public sealed class EfImportPreviewBudget : IImportPreviewBudget
                     _dbContext.LegacyReconciliationSignOffs.Any(
                         signOff => signOff.ReconciliationRunId == run.Id),
                 cancellationToken);
+    }
+
+    private async Task<bool> CanSupersedeAssetAsync(
+        Guid payloadId,
+        CancellationToken cancellationToken)
+    {
+        var job = await _dbContext.AssetImportJobs.FindAsync(
+            [payloadId], cancellationToken);
+        return job?.Status == Inventory.Domain.Importing.AssetImportStatus.ValidationFailed &&
+            !await _dbContext.LegacyReconciliationRuns.AnyAsync(
+                run => run.AssetImportJobId == payloadId,
+                cancellationToken);
+    }
+
+    private async Task<bool> CanSupersedeReferenceAsync(
+        Guid payloadId,
+        CancellationToken cancellationToken)
+    {
+        var job = await _dbContext.ReferenceDataImportJobs.FindAsync(
+            [payloadId], cancellationToken);
+        return job?.Status ==
+            Inventory.Domain.Importing.ReferenceDataImportStatus.ValidationFailed;
     }
 
     private async Task LockGateAsync(CancellationToken cancellationToken)

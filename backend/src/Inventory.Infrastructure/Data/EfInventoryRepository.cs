@@ -626,6 +626,7 @@ public sealed class EfInventoryRepository : IInventoryRepository
             row.Asset.RetirementReason,
             row.Asset.DisposedAtUtc,
             row.Asset.DisposalReason,
-            row.Asset.Version));
+            row.Asset.Version,
+            row.Asset.ReportedSerialNumber));
     }
 }

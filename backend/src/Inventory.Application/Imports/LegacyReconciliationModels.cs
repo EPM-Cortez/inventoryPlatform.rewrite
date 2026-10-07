@@ -149,7 +149,8 @@ internal sealed record LegacyImportSourceRow(
     AssetImportAssignmentResolution AssignmentResolution,
     string? AssignedTo,
     string? LegacyId,
-    IReadOnlyList<string> InferredDateFields);
+    IReadOnlyList<string> InferredDateFields,
+    AssetImportSerialResolution SerialResolution = AssetImportSerialResolution.Missing);
 
 internal sealed record LegacyImportSnapshot(
     AssetImportJobView Job,

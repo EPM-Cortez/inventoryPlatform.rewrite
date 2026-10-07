@@ -182,6 +182,20 @@ public sealed class AssetService
         try
         {
             changes = asset.Update(ToDetails(command), command.Version, now);
+            if (changes.ContainsKey(nameof(Asset.SerialNumber)) &&
+                asset.SerialNumber is not null &&
+                asset.ReportedSerialNumber is not null)
+            {
+                var previousReported = asset.ReportedSerialNumber;
+                asset.SetReportedSerialNumber(null, asset.Version, now);
+                var allChanges = new Dictionary<string, FieldChange>(
+                    changes, StringComparer.Ordinal)
+                {
+                    [nameof(Asset.ReportedSerialNumber)] =
+                        new FieldChange(previousReported, null),
+                };
+                changes = allChanges;
+            }
         }
         catch (DomainRuleException exception)
         {

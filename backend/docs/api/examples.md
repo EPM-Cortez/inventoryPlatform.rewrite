@@ -912,7 +912,10 @@ manual asset creation still rejects `Assigned` status.
 The `201` job response reports `readyToCommit` or `validationFailed`, counts including
 `generatedAssetTagRows`, `plannedCategoryCreateCount`,
 `plannedLocationCreateCount`, `inferredDateRows`, `fuzzyPersonMatchRows`,
-`unassignedImportRows`, preview, errors, `fileHash`, and `version`. Retrieve it or its
+`unassignedImportRows`, `reportedDuplicateSerialRows`, preview rows with
+`sourceSerialNumber`/`serialResolution`, errors, `fileHash`, and `version`.
+Duplicate serials are retained as `reportedSerialNumber` on the asset rather
+than inserted into the unique verified `serialNumber` field. Retrieve the job or its
 full error report:
 
 ```http
@@ -925,7 +928,11 @@ Asset and people/department/location validation share a persisted preview budget
 budget returns `409 import_preview_budget_exceeded` without creating a job. Raw
 preview and row-error payloads expire after seven days; reads and commits then
 return `409 import_preview_expired`. The job identity, counts, hashes and audit
-history remain. Signed legacy reconciliation evidence is preserved, but an
+history remain. Successful ordinary commits purge their row payloads and release
+quota immediately; when a correction attempt reaches the budget, the oldest
+failed previews for that same user are superseded. Ready jobs and reconciliation
+evidence are not automatically evicted. Signed legacy reconciliation evidence is
+preserved, but an
 expired, uncommitted import must be validated again before cutover.
 
 Commit only the last-seen ready job version:

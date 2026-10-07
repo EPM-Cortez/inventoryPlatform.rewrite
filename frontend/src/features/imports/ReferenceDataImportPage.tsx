@@ -229,7 +229,12 @@ function Wizard({ config }: { config: ReferenceResourceConfig }) {
               job={job}
               config={config}
               commit={commit}
-              onCommitted={setCommitted}
+              onCommitted={(result) => {
+                setCommitted(result);
+                setFile(null);
+                setJob(null);
+                validate.reset();
+              }}
             />
           )}
         </>

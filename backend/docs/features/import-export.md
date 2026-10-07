@@ -16,8 +16,9 @@ Asset CSV changes are deliberately split into two requests:
    not change assets, categories, or locations.
 2. `GET /api/v1/imports/{id}` returns counts, a bounded valid-row preview, bounded
    inline errors, the SHA-256 file hash, generated-tag indicators, planned
-   category/location creates, inferred date values, assignment-resolution details,
-   fuzzy/unassigned row counts, and the import-job concurrency `version`.
+   category/location creates, inferred date values, assignment/serial-resolution
+   details, fuzzy/unassigned/duplicate-serial row counts, and the import-job
+   concurrency `version`.
 3. `GET /api/v1/imports/{id}/errors.csv` returns every row/column error.
 4. `POST /api/v1/imports/{id}/commit` accepts the last-seen job `version`.
    Only a `readyToCommit` job can be committed.
@@ -37,10 +38,18 @@ first insert and misleading success audit are both absent.
 Every changed row creates one `ImportCreated` or `ImportUpdated` asset event containing
 the import job ID, CSV row, action, generated-tag indicator, and changed field names.
 Unchanged upsert rows are counted but do not create misleading asset events.
+After a successful ordinary commit, the validated row/error payload is removed in
+the same transaction and its preview quota is released immediately. The job's
+identity, counts, hash, commit metadata, asset events, and audit remain readable.
+An import linked to a legacy-reconciliation run retains source evidence until
+sign-off or normal expiry. When a user reaches the preview limit while correcting
+a file, their oldest failed (non-reconciliation) previews are superseded and
+audited; ready-to-commit previews are never evicted automatically.
 
 ## Modes
 
-- `createOnly` rejects a tag or serial already present in live inventory.
+- `createOnly` rejects a tag already present in live inventory. A serial already
+  used elsewhere is retained as reported evidence, not as a verified identifier.
 - `upsertByAssetTag` creates an unknown tag and updates a known tag. It never matches
   by serial alone.
 
@@ -54,6 +63,18 @@ replaced.
 
 Retired and disposed assets cannot be changed by import. The normal lifecycle actions
 remain mandatory.
+
+Verified `serialNumber` remains unique across assets. When a non-placeholder
+source serial occurs on more than one row or is already verified on a different
+asset, the import retains the exact source value in `reportedSerialNumber` on
+each affected asset and leaves its verified serial blank (or preserves an
+existing verified serial on upsert). It does not invent a suffix or guess which
+device is correct. The preview marks `serialResolution: reportedDuplicate` and
+exposes `sourceSerialNumber`; the job reports `reportedDuplicateSerialRows`.
+Known non-serial placeholders such as `N/A`, `UNKNOWN`, and
+`TO BE FILLED BY O.E.M.` are ignored instead. Entering a corrected unique
+verified serial in the normal asset editor clears the unresolved reported value;
+the import event retains the original source value for audit.
 
 An imported `Assigned` row uses an active department or person when one can be
 resolved. Person external IDs match exactly first. A fuzzy match is accepted only
@@ -106,8 +127,8 @@ Rules:
 - category, location, and department reference matches are trim-normalised and
   case-insensitive. Person external IDs additionally use the bounded, unique fuzzy
   fallback described above;
-- duplicate tags and non-empty serials are detected both within the file and against
-  live data;
+- duplicate tags are errors; duplicate non-placeholder serials are detected both
+  within the file and against live data, then preserved as reported values;
 - field lengths and the same asset/custody lifecycle rules used by normal API writes
   are enforced.
 
@@ -152,8 +173,9 @@ warranty start use the first possible day, while warranty end uses the last poss
 day. Integer Excel serial dates are decoded using the standard OLE Automation date
 system. Blank physical rows are ignored. A blank Device Name receives a deterministic
 generated asset tag while `deviceName` remains blank. Blank School or more than one
-school code in a file is rejected. Duplicate supplied/generated tags and serials
-remain errors. Missing categories and locations are planned and created at commit. A
+school code in a file is rejected. Duplicate supplied/generated tags remain errors;
+duplicate serials use the reported-serial rule above. Missing categories and
+locations are planned and created at commit. A
 `Used By` value that cannot safely resolve is retained in the preview/snapshot and the
 asset imports as unassigned `InStock`; people are never created implicitly from an
 asset file.
@@ -174,7 +196,8 @@ Defaults are configurable under `ImportExport`:
 
 The byte limit is enforced from both upload metadata and the bytes actually read.
 Multipart parsing has only 1 MB of additional envelope allowance. The full valid-row
-snapshot and full error list are persisted even when the API preview is truncated.
+snapshot and full error list are persisted until commit or expiry even when the API
+preview is truncated.
 
 ## Export
 
@@ -187,6 +210,8 @@ Exports:
 
 - use the version-2 header and deterministic column order;
 - contain current custody and active primary-warranty data;
+- write a reported serial into the `serialNumber` CSV column only when the verified
+  serial is blank, so a full-file export and re-import retain the source number;
 - are UTF-8 with a BOM and CRLF record endings;
 - apply RFC CSV quoting;
 - prefix cells whose first non-space character is `=`, `+`, `-`, or `@` with an

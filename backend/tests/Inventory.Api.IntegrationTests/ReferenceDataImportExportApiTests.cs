@@ -144,6 +144,46 @@ public sealed class ReferenceDataImportExportApiTests :
     }
 
     [Fact]
+    public async Task ReferenceCommitReleasesPreviewBudgetForImmediateReimport()
+    {
+        using var factory = new InventoryApiFactory(
+            seedDefaultUsers: true,
+            importPreviewMaximumJobs: 1);
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            InventoryApiFactory.AdministratorEmail,
+            InventoryApiFactory.AdministratorPassword);
+        var csv = AssetCsvCodec.Write(
+            ReferenceDataCsvSchemas.DepartmentCompatibilityHeaders,
+            [[$"Reimport department {NewSuffix()}", null]]);
+
+        var firstJob = await ValidateAsync(
+            client, "/api/v1/imports/departments/validate", "departments.csv", csv,
+            ReferenceDataImportModeContract.CreateOnly);
+        await CommitAsync(client, firstJob);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+            var reservation = await db.ImportPreviewReservations.AsNoTracking()
+                .SingleAsync(item => item.PayloadId == firstJob.Id);
+            Assert.NotNull(reservation.PurgedAtUtc);
+            var persistedJob = await db.ReferenceDataImportJobs.AsNoTracking()
+                .SingleAsync(item => item.Id == firstJob.Id);
+            Assert.Equal("[]", persistedJob.ValidatedRowsJson);
+            Assert.Equal("[]", persistedJob.ErrorsJson);
+        }
+
+        var committedJob = await client.GetFromJsonAsync<ReferenceDataImportJobResponse>(
+            $"/api/v1/imports/reference-data/{firstJob.Id}", ApiTestClient.JsonOptions);
+        Assert.Equal(ReferenceDataImportStatusContract.Committed, committedJob?.Status);
+
+        var secondJob = await ValidateAsync(
+            client, "/api/v1/imports/departments/validate", "departments.csv", csv,
+            ReferenceDataImportModeContract.UpsertByKey);
+        Assert.Equal(ReferenceDataImportStatusContract.ReadyToCommit, secondJob.Status);
+    }
+
+    [Fact]
     public async Task ValidationReportsDuplicateEmailAndLocationCycleWithoutWritingData()
     {
         using var client = await CreateAdministratorClientAsync();

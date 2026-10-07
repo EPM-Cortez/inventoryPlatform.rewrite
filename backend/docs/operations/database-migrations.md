@@ -145,6 +145,11 @@ test and the PostgreSQL compatibility workflow before release.
   status, and audit metadata remain. The down path removes quota/retention tracking
   but cannot restore payloads already purged; use a verified backup and a forward
   corrective migration after cleanup has run.
+- `PreserveReportedSerialNumbers` adds a nullable, non-unique reported serial to
+  assets. It preserves duplicate source values without weakening the unique verified
+  serial index. Existing rows need no backfill. Rolling back drops the reported values
+  permanently; export/reconcile them first and prefer a forward corrective migration
+  once imports have used the field.
 
 After applying `AddUserAdministrationLifecycle`, the normal serving process
 transactionally reconciles role presets before accepting requests. The explicit

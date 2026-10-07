@@ -2726,7 +2726,8 @@
                     "retirementReason": "example",
                     "disposedAtUtc": "2026-07-25T12:00:00Z",
                     "disposalReason": "example",
-                    "version": "11111111-1111-1111-1111-111111111111"
+                    "version": "11111111-1111-1111-1111-111111111111",
+                    "reportedSerialNumber": "example"
                   },
                   "agent": {
                     "agent": {
@@ -7562,7 +7563,9 @@
                       "warrantyEndDate": "2026-07-25",
                       "inferredDateFields": [
                         "example"
-                      ]
+                      ],
+                      "sourceSerialNumber": "example",
+                      "serialResolution": "missing"
                     }
                   ],
                   "errors": [
@@ -7576,7 +7579,8 @@
                   ],
                   "previewTruncated": true,
                   "errorsTruncated": true,
-                  "version": "11111111-1111-1111-1111-111111111111"
+                  "version": "11111111-1111-1111-1111-111111111111",
+                  "reportedDuplicateSerialRows": 0
                 }
               }
             }
@@ -9060,7 +9064,8 @@
                   "retirementReason": "example",
                   "disposedAtUtc": "2026-07-25T12:00:00Z",
                   "disposalReason": "example",
-                  "version": "11111111-1111-1111-1111-111111111111"
+                  "version": "11111111-1111-1111-1111-111111111111",
+                  "reportedSerialNumber": "example"
                 }
               }
             }
@@ -9224,7 +9229,8 @@
                   "retirementReason": "example",
                   "disposedAtUtc": "2026-07-25T12:00:00Z",
                   "disposalReason": "example",
-                  "version": "11111111-1111-1111-1111-111111111111"
+                  "version": "11111111-1111-1111-1111-111111111111",
+                  "reportedSerialNumber": "example"
                 }
               }
             }
@@ -9413,7 +9419,8 @@
                   "retirementReason": "example",
                   "disposedAtUtc": "2026-07-25T12:00:00Z",
                   "disposalReason": "example",
-                  "version": "11111111-1111-1111-1111-111111111111"
+                  "version": "11111111-1111-1111-1111-111111111111",
+                  "reportedSerialNumber": "example"
                 }
               }
             }
@@ -9599,7 +9606,8 @@
                   "retirementReason": "example",
                   "disposedAtUtc": "2026-07-25T12:00:00Z",
                   "disposalReason": "example",
-                  "version": "11111111-1111-1111-1111-111111111111"
+                  "version": "11111111-1111-1111-1111-111111111111",
+                  "reportedSerialNumber": "example"
                 }
               }
             }
@@ -9777,7 +9785,8 @@
                   "retirementReason": "example",
                   "disposedAtUtc": "2026-07-25T12:00:00Z",
                   "disposalReason": "example",
-                  "version": "11111111-1111-1111-1111-111111111111"
+                  "version": "11111111-1111-1111-1111-111111111111",
+                  "reportedSerialNumber": "example"
                 }
               }
             }
@@ -10001,7 +10010,8 @@
                   "retirementReason": "example",
                   "disposedAtUtc": "2026-07-25T12:00:00Z",
                   "disposalReason": "example",
-                  "version": "11111111-1111-1111-1111-111111111111"
+                  "version": "11111111-1111-1111-1111-111111111111",
+                  "reportedSerialNumber": "example"
                 }
               }
             }
@@ -10223,7 +10233,8 @@
                   "retirementReason": "example",
                   "disposedAtUtc": "2026-07-25T12:00:00Z",
                   "disposalReason": "example",
-                  "version": "11111111-1111-1111-1111-111111111111"
+                  "version": "11111111-1111-1111-1111-111111111111",
+                  "reportedSerialNumber": "example"
                 }
               }
             }
@@ -27034,6 +27045,15 @@
           "version": {
             "type": "string",
             "format": "uuid"
+          },
+          "reportedDuplicateSerialRows": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32",
+            "default": 0
           }
         }
       },
@@ -27156,8 +27176,27 @@
             "items": {
               "type": "string"
             }
+          },
+          "sourceSerialNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "serialResolution": {
+            "$ref": "#/components/schemas/AssetImportSerialResolutionContract"
           }
         }
+      },
+      "AssetImportSerialResolutionContract": {
+        "enum": [
+          "missing",
+          "verified",
+          "reportedDuplicate",
+          "ignoredPlaceholder"
+        ],
+        "type": "string",
+        "default": 0
       },
       "AssetImportStatusContract": {
         "enum": [
@@ -27537,6 +27576,12 @@
           "version": {
             "type": "string",
             "format": "uuid"
+          },
+          "reportedSerialNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

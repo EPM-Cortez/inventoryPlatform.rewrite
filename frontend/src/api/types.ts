@@ -200,6 +200,8 @@ export interface Asset {
   manufacturer: string | null;
   model: string | null;
   serialNumber: string | null;
+  /** Source value from an import that could not be verified as unique. */
+  reportedSerialNumber: string | null;
   lanMacAddress: string | null;
   biosGuid: Guid | null;
   ownership: string | null;
@@ -665,6 +667,12 @@ export const ASSET_IMPORT_ASSIGNMENT_RESOLUTIONS = [
 export type AssetImportAssignmentResolution =
   (typeof ASSET_IMPORT_ASSIGNMENT_RESOLUTIONS)[number];
 
+export type AssetImportSerialResolution =
+  | 'missing'
+  | 'verified'
+  | 'reportedDuplicate'
+  | 'ignoredPlaceholder';
+
 export interface AssetImportError {
   rowNumber: number;
   column: string;
@@ -722,6 +730,8 @@ export interface AssetImportPreviewRow {
    * is a guess worth showing the user.
    */
   inferredDateFields: string[];
+  sourceSerialNumber: string | null;
+  serialResolution: AssetImportSerialResolution;
 }
 
 /**
@@ -760,6 +770,8 @@ export interface AssetImportJob {
    * unless someone notices.
    */
   unassignedImportRows: number;
+  /** Source serials retained separately because they are duplicated. */
+  reportedDuplicateSerialRows: number;
   createdAtUtc: IsoInstant;
   createdByUserId: Guid;
   createdByDisplayName: string;

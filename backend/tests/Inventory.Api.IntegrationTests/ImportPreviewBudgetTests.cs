@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using Inventory.Application.DataExchange;
 using Inventory.Contracts.V1;
 using Inventory.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -32,7 +33,8 @@ public sealed class ImportPreviewBudgetTests
         };
         foreach (var (route, mode) in routes)
         {
-            using var response = await UploadAsync(client, route, mode);
+            using var response = await UploadAsync(
+                client, route, mode, ValidCsvForRoute(route));
             Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         }
 
@@ -54,7 +56,7 @@ public sealed class ImportPreviewBudgetTests
     }
 
     [Fact]
-    public async Task CumulativeByteLimitRejectsSecondPreviewWithoutPartialJob()
+    public async Task CumulativeByteLimitSupersedesOldFailedPreview()
     {
         int payloadBytes;
         using (var measuringFactory = new InventoryApiFactory())
@@ -90,15 +92,29 @@ public sealed class ImportPreviewBudgetTests
             client,
             "/api/v1/imports/assets/validate",
             "CreateOnly");
-        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
-        Assert.Contains(
-            "import_preview_budget_exceeded",
-            await second.Content.ReadAsStringAsync(),
-            StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
         await using var scope = factory.Services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
-        Assert.Equal(1, await database.AssetImportJobs.CountAsync());
-        Assert.Equal(1, await database.ImportPreviewReservations.CountAsync());
+        Assert.Equal(2, await database.AssetImportJobs.CountAsync());
+        Assert.Equal(2, await database.ImportPreviewReservations.CountAsync());
+        Assert.Equal(1, await database.ImportPreviewReservations.CountAsync(
+            reservation => reservation.PurgedAtUtc == null));
+        Assert.Equal(1, await database.AuditLogs.CountAsync(
+            audit => audit.Action == "import.preview.superseded"));
+
+        using var tooSmallFactory = new InventoryApiFactory(
+            seedDefaultUsers: true,
+            importPreviewMaximumBytesPerUser: payloadBytes - 1);
+        using var tooSmallClient = await tooSmallFactory.CreateAuthenticatedClientAsync(
+            InventoryApiFactory.AdministratorEmail,
+            InventoryApiFactory.AdministratorPassword);
+        using var tooLarge = await UploadAsync(
+            tooSmallClient, "/api/v1/imports/assets/validate", "CreateOnly");
+        Assert.Equal(HttpStatusCode.Conflict, tooLarge.StatusCode);
+        await using var tooSmallScope = tooSmallFactory.Services.CreateAsyncScope();
+        var tooSmallDb = tooSmallScope.ServiceProvider
+            .GetRequiredService<InventoryDbContext>();
+        Assert.Equal(0, await tooSmallDb.AssetImportJobs.CountAsync());
     }
 
     [Fact]
@@ -180,13 +196,39 @@ public sealed class ImportPreviewBudgetTests
     private static async Task<HttpResponseMessage> UploadAsync(
         HttpClient client,
         string route,
-        string mode)
+        string mode,
+        byte[]? content = null)
     {
         using var form = new MultipartFormDataContent();
-        var file = new ByteArrayContent(InvalidCsv);
+        var file = new ByteArrayContent(content ?? InvalidCsv);
         file.Headers.ContentType = new MediaTypeHeaderValue("text/csv");
         form.Add(file, "file", "preview.csv");
         form.Add(new StringContent(mode), "mode");
         return await client.PostAsync(route, form);
     }
+
+    private static byte[] ValidCsvForRoute(string route) => route switch
+    {
+        "/api/v1/imports/assets/validate" => AssetCsvCodec.Write(
+            AssetCsvSchema.Headers,
+            [AssetCsvSchema.Headers.Select(header => header switch
+            {
+                "schemaVersion" => "2",
+                "assetTag" => "BUDGET-ASSET-001",
+                "category" => "Budget Test Category",
+                "status" => "InStock",
+                "condition" => "Good",
+                _ => null,
+            }).ToArray()]),
+        "/api/v1/imports/people/validate" => AssetCsvCodec.Write(
+            ReferenceDataCsvSchemas.StaffCompatibilityHeaders,
+            [["Budget Staff", "Staff", "budget.staff@example.test"]]),
+        "/api/v1/imports/departments/validate" => AssetCsvCodec.Write(
+            ReferenceDataCsvSchemas.DepartmentCompatibilityHeaders,
+            [["Budget Department", null]]),
+        "/api/v1/imports/locations/validate" => AssetCsvCodec.Write(
+            ReferenceDataCsvSchemas.LocationCompatibilityHeaders,
+            [["Budget Room", "Room", "BUDGET-ROOM"]]),
+        _ => throw new ArgumentOutOfRangeException(nameof(route), route, null),
+    };
 }

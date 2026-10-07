@@ -28,6 +28,14 @@ public enum AssetImportAssignmentResolutionContract
     Unassigned,
 }
 
+public enum AssetImportSerialResolutionContract
+{
+    Missing,
+    Verified,
+    ReportedDuplicate,
+    IgnoredPlaceholder,
+}
+
 public sealed class CommitAssetImportRequest
 {
     public Guid Version { get; init; }
@@ -59,7 +67,10 @@ public sealed record AssetImportPreviewRowResponse(
     DateOnly? PurchaseDate,
     DateOnly? WarrantyStartDate,
     DateOnly? WarrantyEndDate,
-    IReadOnlyList<string> InferredDateFields);
+    IReadOnlyList<string> InferredDateFields,
+    string? SourceSerialNumber = null,
+    AssetImportSerialResolutionContract SerialResolution =
+        AssetImportSerialResolutionContract.Missing);
 
 public sealed record AssetImportJobResponse(
     Guid Id,
@@ -92,7 +103,8 @@ public sealed record AssetImportJobResponse(
     IReadOnlyList<AssetImportErrorResponse> Errors,
     bool PreviewTruncated,
     bool ErrorsTruncated,
-    Guid Version);
+    Guid Version,
+    int ReportedDuplicateSerialRows = 0);
 
 public sealed record AssetImportCommitResponse(
     Guid ImportJobId,

@@ -584,6 +584,10 @@ namespace Inventory.Infrastructure.Data.Migrations
                     b.Property<DateOnly?>("PurchaseDate")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ReportedSerialNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("RetiredAtUtc")
                         .HasColumnType("TEXT");
 

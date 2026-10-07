@@ -266,7 +266,12 @@ export default function AssetImportPage() {
             <AssetImportReview
               job={job}
               commit={commit}
-              onCommitted={setCommitted}
+              onCommitted={(result) => {
+                setCommitted(result);
+                setFile(null);
+                setJob(null);
+                validate.reset();
+              }}
             />
           )}
         </>
@@ -332,6 +337,25 @@ function AssetImportReview({
                 </Badge>
               </span>
             </Tooltip>
+          )}
+        </span>
+      ),
+    },
+    {
+      id: 'serial',
+      header: 'Serial from file',
+      hideBelow: 'lg',
+      width: 'w-48',
+      cell: (row) => (
+        <span className="flex flex-col items-start gap-1">
+          <span className="font-mono text-xs text-text">
+            {row.sourceSerialNumber ?? '—'}
+          </span>
+          {row.serialResolution === 'reportedDuplicate' && (
+            <Badge tone="warning">Reported, not verified</Badge>
+          )}
+          {row.serialResolution === 'ignoredPlaceholder' && (
+            <Badge tone="info">Placeholder ignored</Badge>
           )}
         </span>
       ),
@@ -477,6 +501,19 @@ function AssetImportReview({
                   )}
                 </div>
               )}
+            </Alert>
+          )}
+
+          {job.reportedDuplicateSerialRows > 0 && (
+            <Alert
+              tone="warning"
+              title={`${formatNumber(job.reportedDuplicateSerialRows)} ${
+                job.reportedDuplicateSerialRows === 1 ? 'serial is' : 'serials are'
+              } repeated`}
+            >
+              The original numbers will be kept as reported serials on those assets.
+              They will not be used as unique verified identifiers or replaced with
+              invented numbers. Check the affected rows before applying.
             </Alert>
           )}
 
