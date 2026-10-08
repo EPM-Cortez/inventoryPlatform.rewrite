@@ -45,7 +45,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     return <Navigate to="/change-password" replace />;
   }
 
-  if (mfaEnrollmentRequired && location.pathname !== '/security') {
+  // Finish the password change first, including when already on its form.
+  // Otherwise both flags make these two routes redirect to each other.
+  if (!mustChangePassword && mfaEnrollmentRequired && location.pathname !== '/security') {
     return <Navigate to="/security" replace />;
   }
 
